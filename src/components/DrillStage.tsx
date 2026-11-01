@@ -10,8 +10,15 @@ import {
   Play,
   Square,
   ArrowRight,
+  Zap,
+  BookOpen,
+  Layers,
 } from 'lucide-react';
-import { DrillPromptCard, DrillStageStatus } from '../engine/drillDirector';
+import {
+  DrillPromptCard,
+  DrillStageStatus,
+  SubModuleCheckReport,
+} from '../engine/drillDirector';
 import { EvaluationResult } from '../engine/evaluator';
 
 interface DrillStageProps {
@@ -19,6 +26,8 @@ interface DrillStageProps {
   status: DrillStageStatus;
   isSessionRunning: boolean;
   lastEvaluation: EvaluationResult | null;
+  checkReport?: SubModuleCheckReport | null;
+  activeSubModuleLabel?: string;
   interimTranscript: string;
   audioLevel: number;
   snapVisualPulse: boolean;
@@ -29,6 +38,8 @@ interface DrillStageProps {
   beatTimerSeconds: number;
   hideWrittenPromptUntilSnap: boolean;
   onStart: () => void;
+  onStartSubModuleCheck?: () => void;
+  onOpenCompanionLesson?: () => void;
   onPause: () => void;
   onAdvance: () => void;
   onTriggerMic: () => void;
@@ -41,6 +52,8 @@ export const DrillStage: React.FC<DrillStageProps> = ({
   status,
   isSessionRunning,
   lastEvaluation,
+  checkReport,
+  activeSubModuleLabel,
   interimTranscript,
   audioLevel,
   snapVisualPulse,
@@ -51,6 +64,8 @@ export const DrillStage: React.FC<DrillStageProps> = ({
   beatTimerSeconds,
   hideWrittenPromptUntilSnap,
   onStart,
+  onStartSubModuleCheck,
+  onOpenCompanionLesson,
   onPause,
   onAdvance,
   onTriggerMic,
@@ -72,16 +87,47 @@ export const DrillStage: React.FC<DrillStageProps> = ({
         <div className="rassias-emblem mb-4">
           <Sparkles className="w-12 h-12 text-primary" />
         </div>
+        {activeSubModuleLabel && (
+          <span className="badge badge-primary text-xs font-bold mb-2">
+            {activeSubModuleLabel}
+          </span>
+        )}
         <h2 className="text-2xl font-bold mb-2">Dartmouth Rassias Drill</h2>
         <p className="text-muted text-sm max-w-md mb-6">
-          High-energy oral verb conjugation training. Listen to the Assistant Teacher (AT) cue, wait for the snap (*Snap!*), and respond out loud.
+          High-energy oral verb conjugation training. Review the Companion Lesson, then run a 15-Snap Sub-Module Check or free drill.
         </p>
-        <button className="btn btn-primary btn-lg flex-center gap-2" onClick={onStart}>
-          <Play className="w-5 h-5 fill-current" /> Begin Drill Session
-        </button>
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          {onOpenCompanionLesson && (
+            <button
+              type="button"
+              onClick={onOpenCompanionLesson}
+              className="btn btn-subtle btn-lg flex-center gap-2"
+            >
+              <BookOpen className="w-5 h-5 text-primary" /> Companion Lesson
+            </button>
+          )}
+          {onStartSubModuleCheck && (
+            <button
+              type="button"
+              onClick={onStartSubModuleCheck}
+              className="btn btn-primary btn-lg flex-center gap-2 shadow-md"
+            >
+              <Zap className="w-5 h-5 fill-current" /> Start 15-Snap Check
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onStart}
+            className="btn btn-subtle btn-lg flex-center gap-2"
+          >
+            <Play className="w-5 h-5 fill-current" /> Open Practice
+          </button>
+        </div>
       </div>
     );
   }
+
+  const isChunkWarmupCard = card.promptKind === 'chunk_warmup';
 
   // Obscure prompt text if user enabled Ear-First mode until the AT snaps
   const isPromptObscured =
@@ -97,8 +143,8 @@ export const DrillStage: React.FC<DrillStageProps> = ({
       } ${inRepeatLoop ? 'repeat-border-active' : ''}`}
     >
       {/* Top Status & Cadence Row */}
-      <div className="flex items-center justify-between pb-3 border-b border-border/40 text-xs">
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between pb-3 border-b border-border/40 text-xs flex-wrap gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {card.isBoomerang && (
             <span className="badge badge-boomerang flex items-center gap-1">
               <RotateCcw className="w-3 h-3" /> Boomerang Recall
@@ -112,9 +158,36 @@ export const DrillStage: React.FC<DrillStageProps> = ({
           <span className="badge badge-neutral font-semibold">
             {card.tenseName}
           </span>
+          {card.poolSource === 'focus' && (
+            <span className="badge badge-primary text-[11px]">70% Focus</span>
+          )}
+          {card.poolSource === 'review' && (
+            <span className="badge badge-subtle text-[11px]">30% Review</span>
+          )}
+          {card.poolSource === 'straggler' && (
+            <span className="badge badge-warning text-[11px]">Straggler Recall</span>
+          )}
+          {card.poolSource === 'chunk_warmup' && (
+            <span className="badge badge-accent text-[11px] flex items-center gap-1">
+              <Layers className="w-3 h-3" /> Chunk Warmup
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
+          {checkReport && !checkReport.isComplete && (
+            <span className="badge badge-warning text-[11px] font-bold">
+              {checkReport.chunkSnapsCompleted < checkReport.chunkSnapsTotal
+                ? `Warmup ${checkReport.chunkSnapsCompleted + 1}/${checkReport.chunkSnapsTotal}`
+                : `Check ${Math.min(
+                    checkReport.targetVerbSnaps,
+                    checkReport.completedVerbSnaps + 1
+                  )}/${checkReport.targetVerbSnaps} · Pass ${Math.min(
+                    checkReport.requiredPasses,
+                    checkReport.previousPasses + 1
+                  )}/${checkReport.requiredPasses}`}
+            </span>
+          )}
           {isSessionRunning ? (
             <button
               onClick={onPause}
@@ -148,38 +221,72 @@ export const DrillStage: React.FC<DrillStageProps> = ({
 
       {/* Center Prompt Stage */}
       <div className="my-auto py-6 text-center">
-        {/* Translation Hint */}
-        <div className="text-sm font-medium text-muted tracking-wide uppercase mb-1">
-          {card.translation}
-        </div>
-
-        {/* Main Verb Infinitive */}
-        <h1 className="text-4xl md:text-5xl font-black text-foreground mb-3 tracking-tight">
-          {card.infinitive}
-        </h1>
-
-        {/* Question <-> Answer Scenario Display OR Natural Rassias Trigger */}
-        {card.qaMetadata ? (
-          <div className="qa-bubble mx-auto max-w-lg p-3 rounded-xl bg-surface-raised border border-border/70 my-3">
-            <div className="text-xs font-semibold text-primary/90 uppercase tracking-wider mb-1 flex-center gap-1.5">
-              <HelpCircle className="w-3.5 h-3.5" /> AT Asks:
+        {isChunkWarmupCard ? (
+          <>
+            <div className="text-xs font-bold text-accent tracking-wider uppercase mb-1">
+              5-Snap Non-Verb Chunk Warmup · Say in{' '}
+              {card.language === 'fr' ? 'French' : 'Spanish'}
             </div>
-            <div className="text-lg md:text-xl font-bold text-foreground">
-              {card.qaMetadata.questionPromptDisplay}
-            </div>
-            <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-accent/20 text-accent">
-              Answer: {card.qaMetadata.answerCueBadge}
-            </div>
-          </div>
+            <h1 className="text-4xl md:text-5xl font-black text-foreground mb-3 tracking-tight">
+              &ldquo;{card.translation}&rdquo;
+            </h1>
+            {!isPromptObscured && (
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-surface-raised border border-border/60 text-sm font-bold text-primary">
+                Target Chunk: « {card.pronounDisplay} »
+              </div>
+            )}
+          </>
         ) : (
-          <div className="rassias-cue-box mx-auto my-3 max-w-md">
-            <span className="text-base text-muted font-normal mr-2">
-              {card.rassiasTrigger}
-            </span>
-            <span className="text-2xl md:text-3xl font-extrabold text-primary underline decoration-2 decoration-primary/40 underline-offset-4">
-              {isPromptObscured ? '•••••' : card.pronounDisplay}
-            </span>
-          </div>
+          <>
+            {/* Translation Hint */}
+            <div className="text-sm font-medium text-muted tracking-wide uppercase mb-1">
+              {card.translation}
+            </div>
+
+            {/* Main Verb Infinitive */}
+            <h1 className="text-4xl md:text-5xl font-black text-foreground mb-3 tracking-tight">
+              {card.infinitive}
+            </h1>
+
+            {/* Question <-> Answer Scenario Display OR Natural Rassias Trigger */}
+            {card.qaMetadata ? (
+              <div className="qa-bubble mx-auto max-w-lg p-3 rounded-xl bg-surface-raised border border-border/70 my-3">
+                <div className="text-xs font-semibold text-primary/90 uppercase tracking-wider mb-1 flex-center gap-1.5">
+                  <HelpCircle className="w-3.5 h-3.5" /> AT Asks:
+                </div>
+                <div className="text-lg md:text-xl font-bold text-foreground">
+                  {card.qaMetadata.questionPromptDisplay}
+                </div>
+                <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-accent/20 text-accent">
+                  Answer: {card.qaMetadata.answerCueBadge}
+                </div>
+              </div>
+            ) : (
+              <div className="rassias-cue-box mx-auto my-3 max-w-md">
+                <span className="text-base text-muted font-normal mr-2">
+                  {card.rassiasTrigger}
+                </span>
+                <span className="text-2xl md:text-3xl font-extrabold text-primary underline decoration-2 decoration-primary/40 underline-offset-4">
+                  {isPromptObscured ? '•••••' : card.pronounDisplay}
+                </span>
+              </div>
+            )}
+
+            {/* Attached Non-Verb Lexical Chunk Badge (Option C) */}
+            {card.lexicalChunk && (
+              <div className="mt-2 flex-center">
+                {card.requireTailInResponse ? (
+                  <span className="badge badge-accent text-xs py-1 px-3 font-bold">
+                    + Speak Sentence Tail: « {card.lexicalChunk.target} » ({card.lexicalChunk.english})
+                  </span>
+                ) : (
+                  <span className="badge badge-subtle text-xs py-1 px-2.5">
+                    Scene Tail: + « {card.lexicalChunk.target} » ({card.lexicalChunk.english})
+                  </span>
+                )}
+              </div>
+            )}
+          </>
         )}
 
         {/* Status Callout / Spoken AT Cue */}

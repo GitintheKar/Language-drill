@@ -185,7 +185,7 @@ export function speakATUtterance(
       };
 
       // Safety timeout in case mobile speechSynthesis onend doesn't fire
-      const safetyTimer = setTimeout(finish, Math.max(2200, text.length * 110));
+      const safetyTimer = setTimeout(finish, Math.max(6500, text.length * 200));
 
       utterance.onend = () => {
         clearTimeout(safetyTimer);

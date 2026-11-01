@@ -8,7 +8,10 @@ import {
 import {
   DrillPromptCard,
   DrillStageStatus,
+  PairMasteryStats,
   RassiasDrillDirector,
+  StragglerItem,
+  SubModuleCheckReport,
   VerbMasteryStats,
 } from '../engine/drillDirector';
 import { EvaluationResult } from '../engine/evaluator';
@@ -28,7 +31,15 @@ export interface SessionScoreboard {
 export function useRassiasDrillSession(
   settings: AppSettings,
   initialMastery: Record<string, VerbMasteryStats>,
-  onMasteryUpdate: (lang: LanguageCode, map: Record<string, VerbMasteryStats>) => void
+  onMasteryUpdate: (
+    lang: LanguageCode,
+    map: Record<string, VerbMasteryStats>,
+    pairMap?: Record<string, PairMasteryStats>,
+    stragglers?: StragglerItem[]
+  ) => void,
+  initialPairMastery?: Record<string, PairMasteryStats>,
+  initialStragglers?: StragglerItem[],
+  onSubModuleCheckComplete?: (report: SubModuleCheckReport) => void
 ) {
   const directorRef = useRef<RassiasDrillDirector | null>(null);
   if (!directorRef.current) {
@@ -42,8 +53,14 @@ export function useRassiasDrillSession(
         enableNegativeAdverbs: settings.enableNegativeAdverbs,
         includeVosotros: settings.includeVosotros,
         useNaturalTriggers: settings.useNaturalTriggers,
+        activeSubModuleId: settings.courseModeEnabled
+          ? settings.activeSubModuleIdByLang[settings.language]
+          : undefined,
+        chunkDrillMode: settings.chunkDrillMode,
       },
-      initialMastery
+      initialMastery,
+      initialPairMastery,
+      initialStragglers
     );
   }
 
@@ -51,6 +68,7 @@ export function useRassiasDrillSession(
   const [stageStatus, setStageStatus] = useState<DrillStageStatus>('idle');
   const [currentCard, setCurrentCard] = useState<DrillPromptCard | null>(null);
   const [lastEvaluation, setLastEvaluation] = useState<EvaluationResult | null>(null);
+  const [checkReport, setCheckReport] = useState<SubModuleCheckReport | null>(null);
   const [interimTranscript, setInterimTranscript] = useState('');
   const [audioLevel, setAudioLevel] = useState(0);
   const [snapVisualPulse, setSnapVisualPulse] = useState(false);
@@ -92,7 +110,12 @@ export function useRassiasDrillSession(
       enableNegativeAdverbs: settings.enableNegativeAdverbs,
       includeVosotros: settings.includeVosotros,
       useNaturalTriggers: settings.useNaturalTriggers,
+      activeSubModuleId: settings.courseModeEnabled
+        ? settings.activeSubModuleIdByLang[settings.language]
+        : undefined,
+      chunkDrillMode: settings.chunkDrillMode,
     });
+    setCheckReport(directorRef.current?.getSubModuleCheckReport() ?? null);
   }, [
     settings.language,
     settings.activeVerbIdsByLang,
@@ -102,6 +125,9 @@ export function useRassiasDrillSession(
     settings.enableNegativeAdverbs,
     settings.includeVosotros,
     settings.useNaturalTriggers,
+    settings.courseModeEnabled,
+    settings.activeSubModuleIdByLang,
+    settings.chunkDrillMode,
   ]);
 
   // Manage Screen Wake Lock on Pixel 10 & Pixel Tablet while session is running
@@ -222,8 +248,8 @@ export function useRassiasDrillSession(
       setStageStatus('listening_repeat');
 
       if (settings.handsFreeMode) {
-        // Short 120ms acoustic settling buffer so laptop speakers don't echo into mic
-        await new Promise((r) => setTimeout(r, 120));
+        // Acoustic settling buffer (380ms) so laptop speakers and finger-snap audio decay before mic opens
+        await new Promise((r) => setTimeout(r, 380));
         if (!sessionActiveRef.current || cycleTokenRef.current !== token) return;
 
         // Automatically listen for the student to repeat the correct form back
@@ -295,7 +321,25 @@ export function useRassiasDrillSession(
       });
 
       setLastEvaluation(outcome.evaluation);
-      onMasteryUpdate(settings.language, director.getMasteryMap());
+      setCheckReport(outcome.checkReport ?? null);
+      onMasteryUpdate(
+        settings.language,
+        director.getMasteryMap(),
+        director.getPairMasteryMap(),
+        director.getStragglerQueue()
+      );
+
+      if (outcome.checkReport?.isComplete) {
+        playSuccessMicroChime(settings.quietVisualOnlyMode);
+        setStageStatus(outcome.completedRepeatLoop ? 'repeat_verified' : 'feedback_success');
+        sessionActiveRef.current = false;
+        setIsSessionRunning(false);
+        const completedReport = outcome.checkReport;
+        setTimeout(() => {
+          onSubModuleCheckComplete?.(completedReport);
+        }, 700);
+        return;
+      }
 
       if (outcome.completedRepeatLoop) {
         // Student repeated the right form after "Répétez !" -> celebrate and advance!
@@ -312,9 +356,16 @@ export function useRassiasDrillSession(
         return;
       }
 
-      // If we were ALREADY in the repeat loop and the user missed again or the mic heard silence:
+      // If we were ALREADY in the repeat loop and the user missed again:
       // Never bark "Repita!" a second time! The card is already in the Boomerang Queue for 3 prompts later.
       if (wasAlreadyInRepeatLoop) {
+        if (!transcript.trim()) {
+          // The mic heard silence or an empty audio glitch during repeat.
+          // DO NOT advance automatically! Keep the card on listening_repeat so the user gets to repeat.
+          setStageStatus('listening_repeat');
+          return;
+        }
+
         setStageStatus('evaluating');
         if (settings.handsFreeMode && sessionActiveRef.current) {
           autoAdvanceTimeoutRef.current = setTimeout(() => {
@@ -371,6 +422,7 @@ export function useRassiasDrillSession(
       settings.language,
       settings.quietVisualOnlyMode,
       settings.spanishPronounMode,
+      onSubModuleCheckComplete,
     ]
   );
 
@@ -392,6 +444,7 @@ export function useRassiasDrillSession(
       startBeatCountdown(settings.beatTimerSeconds, () => {
         if (cycleTokenRef.current !== token) return;
         director.triggerBeatTimeout();
+        setCheckReport(director.getSubModuleCheckReport());
         setLastEvaluation({
           isCorrect: false,
           matchType: 'wrong_conjugation',
@@ -499,6 +552,7 @@ export function useRassiasDrillSession(
         startBeatCountdown(settings.beatTimerSeconds, () => {
           if (cycleTokenRef.current !== token) return;
           director.triggerBeatTimeout();
+          setCheckReport(director.getSubModuleCheckReport());
           setLastEvaluation({
             isCorrect: false,
             matchType: 'wrong_conjugation',
@@ -563,11 +617,37 @@ export function useRassiasDrillSession(
     advanceToNextCard();
   }, [advanceToNextCard, clearTimers]);
 
+  const startGradedSubModuleCheck = useCallback(
+    (subModuleId?: string, currentPassesCompleted = 0) => {
+      const director = directorRef.current;
+      if (!director) return;
+      clearTimers();
+      cancelATSpeech();
+      speechManager.stopActiveListening();
+
+      const report = director.startSubModuleCheck(subModuleId, {
+        targetVerbSnaps: 15,
+        currentPassesCompleted,
+      });
+      setCheckReport(report);
+      sessionActiveRef.current = true;
+      setIsSessionRunning(true);
+      advanceToNextCard();
+    },
+    [advanceToNextCard, clearTimers]
+  );
+
+  const clearGradedSubModuleCheck = useCallback(() => {
+    directorRef.current?.clearSubModuleCheck();
+    setCheckReport(null);
+  }, []);
+
   return {
     isSessionRunning,
     stageStatus,
     currentCard,
     lastEvaluation,
+    checkReport,
     interimTranscript,
     audioLevel,
     snapVisualPulse,
@@ -580,6 +660,8 @@ export function useRassiasDrillSession(
     startSession,
     pauseSession,
     restartSession,
+    startGradedSubModuleCheck,
+    clearGradedSubModuleCheck,
     advanceToNextCard,
     triggerManualMicListen,
     submitTypedOrSpokenResponse: (text: string) => handleTranscriptSubmission(text),

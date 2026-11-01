@@ -14,3 +14,5 @@ export function getLanguagePack(code: LanguageCode): LanguagePack {
 export * from './types';
 export { FRENCH_LANGUAGE_PACK } from './fr/conjugator';
 export { SPANISH_LANGUAGE_PACK } from './es/conjugator';
+export { FRENCH_ROADMAP } from './fr/roadmap';
+export { SPANISH_ROADMAP } from './es/roadmap';

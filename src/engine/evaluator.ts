@@ -3,6 +3,7 @@ import { startsWithFrenchVowelOrMuteH } from '../languages/fr/conjugator';
 import {
   ConjugationResult,
   LanguageCode,
+  LexicalChunk,
   PersonIndex,
 } from '../languages/types';
 
@@ -12,6 +13,7 @@ export type EvaluationMatchType =
   | 'accent_tolerant'
   | 'wrong_pronoun'
   | 'missing_pronoun'
+  | 'missing_tail'
   | 'wrong_negation'
   | 'wrong_french_si'
   | 'wrong_stress_or_tense'
@@ -32,6 +34,15 @@ export interface EvaluationOptions {
    * Optional alternative recognition hypotheses from speech recognition engine (e.g. Chrome SpeechRecognition alternatives).
    */
   alternatives?: string[];
+  /**
+   * Optional non-verb lexical chunk attached as a sentence tail (e.g. "en casa", "à la maison").
+   */
+  expectedTailChunk?: LexicalChunk;
+  /**
+   * When true ('full_sentence' mode), requires the learner to speak the attached expectedTailChunk
+   * along with the conjugated verb. When false ('two_part' mode), speaking the tail is optional.
+   */
+  requireTailInResponse?: boolean;
 }
 
 export interface EvaluationResult {
@@ -664,6 +675,49 @@ export function evaluateSpokenConjugation(
   return primaryEval;
 }
 
+function stripTrailingLexicalChunk(
+  cleanedInput: string,
+  chunk?: LexicalChunk
+): { verbOnlyInput: string; matchedTail: boolean } {
+  if (!chunk) {
+    return { verbOnlyInput: cleanedInput, matchedTail: true };
+  }
+
+  const normTail = normalizeTranscript(chunk.target);
+  const accentFreeTail = stripAccents(normTail);
+  if (!normTail) {
+    return { verbOnlyInput: cleanedInput, matchedTail: true };
+  }
+
+  // Also generate gender-variant tail if chunk ends in -o (e.g. "cansado" -> accept "cansada" / "cansados")
+  const candidateTails = new Set<string>([normTail, accentFreeTail]);
+  if (normTail.endsWith('o')) {
+    const fem = normTail.slice(0, -1) + 'a';
+    candidateTails.add(fem);
+    candidateTails.add(stripAccents(fem));
+    candidateTails.add(normTail + 's');
+    candidateTails.add(fem + 's');
+  }
+
+  const accentFreeInput = stripAccents(cleanedInput);
+  for (const candidate of candidateTails) {
+    if (cleanedInput.endsWith(' ' + candidate)) {
+      const stripped = cleanedInput.slice(0, cleanedInput.length - candidate.length).trim();
+      if (stripped.length > 0) {
+        return { verbOnlyInput: stripped, matchedTail: true };
+      }
+    }
+    if (accentFreeInput.endsWith(' ' + candidate)) {
+      const stripped = cleanedInput.slice(0, cleanedInput.length - candidate.length).trim();
+      if (stripped.length > 0) {
+        return { verbOnlyInput: stripped, matchedTail: true };
+      }
+    }
+  }
+
+  return { verbOnlyInput: cleanedInput, matchedTail: false };
+}
+
 function evaluateSingleTranscript(
   rawTranscript: string,
   target: ConjugationResult,
@@ -676,23 +730,114 @@ function evaluateSingleTranscript(
     target.tenseId
   );
 
+  const tailChunk = options?.expectedTailChunk;
+  const requireTail = Boolean(options?.requireTailInResponse && tailChunk);
+  const fullExpectedWithTail = tailChunk
+    ? `${target.fullForm} ${tailChunk.target}`
+    : target.fullForm;
+
   if (!cleaned) {
     return {
       isCorrect: false,
       matchType: 'wrong_conjugation',
       heardNormalized: '',
-      expectedDisplay: target.fullForm,
-      expectedSpoken: target.fullForm,
+      expectedDisplay: requireTail ? fullExpectedWithTail : target.fullForm,
+      expectedSpoken: requireTail ? fullExpectedWithTail : target.fullForm,
       feedbackMessage:
         target.language === 'fr'
-          ? `Répétez : « ${target.fullForm} ! »`
-          : `¡Repita!: « ${target.fullForm} ! »`,
+          ? `Répétez : « ${requireTail ? fullExpectedWithTail : target.fullForm} ! »`
+          : `¡Repita!: « ${requireTail ? fullExpectedWithTail : target.fullForm} ! »`,
       shouldTriggerRepeat: true,
     };
   }
 
-  if (target.language === 'fr') {
-    return evaluateFrench(cleaned, saidOui, target, options);
+  const { verbOnlyInput, matchedTail } = stripTrailingLexicalChunk(cleaned, tailChunk);
+
+  const baseEval =
+    target.language === 'fr'
+      ? evaluateFrench(verbOnlyInput, saidOui, target, options)
+      : evaluateSpanish(verbOnlyInput, target, options);
+
+  // If the conjugation was right, but full_sentence mode required the tail and it was omitted:
+  if (baseEval.isCorrect && requireTail && !matchedTail && tailChunk) {
+    return {
+      isCorrect: false,
+      matchType: 'missing_tail',
+      heardNormalized: cleaned,
+      expectedDisplay: fullExpectedWithTail,
+      expectedSpoken: fullExpectedWithTail,
+      feedbackMessage:
+        target.language === 'fr'
+          ? `Ajoutez la fin de la phrase (« ${tailChunk.target} ») — Répétez : « ${fullExpectedWithTail} ! »`
+          : `Incluye el complemento (« ${tailChunk.target} ») — ¡Repita!: « ${fullExpectedWithTail} ! »`,
+      shouldTriggerRepeat: true,
+    };
   }
-  return evaluateSpanish(cleaned, target, options);
+
+  if (requireTail && tailChunk) {
+    return {
+      ...baseEval,
+      expectedDisplay: fullExpectedWithTail,
+      expectedSpoken: fullExpectedWithTail,
+    };
+  }
+
+  return baseEval;
+}
+
+/**
+ * Evaluates a spoken Non-Verb Lexical Chunk during the 5-snap Chunk Warmup (Part 1 of Option C 'two_part' mode).
+ */
+export function evaluateSpokenChunk(
+  rawTranscript: string,
+  chunk: LexicalChunk,
+  language: LanguageCode,
+  alternatives?: string[]
+): EvaluationResult {
+  const candidates = [rawTranscript, ...(alternatives ?? [])];
+  const normExpected = normalizeTranscript(chunk.target);
+  const accentFreeExpected = stripAccents(normExpected);
+
+  for (const candidate of candidates) {
+    const normHeard = normalizeTranscript(candidate)
+      .replace(/^(répétez|repetez|repita)\s*/i, '')
+      .trim();
+    if (!normHeard) continue;
+
+    const accentFreeHeard = stripAccents(normHeard);
+    const exactOrContains =
+      normHeard === normExpected ||
+      accentFreeHeard === accentFreeExpected ||
+      normHeard.endsWith(' ' + normExpected) ||
+      accentFreeHeard.endsWith(' ' + accentFreeExpected);
+
+    if (exactOrContains) {
+      return {
+        isCorrect: true,
+        matchType: normHeard === normExpected ? 'exact' : 'accent_tolerant',
+        heardNormalized: normHeard,
+        expectedDisplay: chunk.target,
+        expectedSpoken: chunk.target,
+        feedbackMessage:
+          language === 'fr'
+            ? `Très bien ! (« ${chunk.target} »)`
+            : `¡Muy bien! (« ${chunk.target} »)`,
+        shouldTriggerRepeat: false,
+      };
+    }
+  }
+
+  const primaryNorm = normalizeTranscript(rawTranscript);
+  return {
+    isCorrect: false,
+    matchType: 'wrong_conjugation',
+    heardNormalized: primaryNorm,
+    expectedDisplay: chunk.target,
+    expectedSpoken: chunk.target,
+    feedbackMessage:
+      language === 'fr'
+        ? `Répétez l'expression : « ${chunk.target} ! »`
+        : `¡Repita la expresión!: « ${chunk.target} ! »`,
+    shouldTriggerRepeat: true,
+  };
 }

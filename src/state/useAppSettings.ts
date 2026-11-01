@@ -1,19 +1,46 @@
 import { useCallback, useEffect, useState } from 'react';
 import { getLanguagePack } from '../languages';
 import {
+  ChunkDrillMode,
   CurriculumTier,
   LanguageCode,
   PolarityMode,
   VerbEntry,
 } from '../languages/types';
-import { RassiasDrillCadence, VerbMasteryStats } from '../engine/drillDirector';
+import {
+  PairMasteryStats,
+  RassiasDrillCadence,
+  StragglerItem,
+  SubModuleCheckReport,
+  VerbMasteryStats,
+} from '../engine/drillDirector';
+import {
+  getRoadmapForLanguage,
+  resolveSubModulePool,
+} from '../engine/roadmapResolver';
 import { BYOKConfig, SpeechEngineType } from '../speech/types';
+
+export interface SubModuleProgressStats {
+  subModuleId: string;
+  passesCompleted: number;
+  requiredPasses: number;
+  graduated: boolean;
+  bestAccuracyPct: number;
+  encoreCount: number;
+  lastAttemptedAt: number;
+}
 
 export interface AppSettings {
   language: LanguageCode;
   locales: Record<LanguageCode, string>;
   activeVerbIdsByLang: Record<LanguageCode, string[]>;
   activeTenseIdsByLang: Record<LanguageCode, string[]>;
+  /** When true, follows the progressive Sub-Module Roadmap (70% Focus / 30% Review) */
+  courseModeEnabled: boolean;
+  /** Currently active Sub-Module ID per language */
+  activeSubModuleIdByLang: Record<LanguageCode, string>;
+  /** Option C Toggle: 'two_part' (5-snap Chunk Warmup + Verb Snaps) vs 'full_sentence' (Spoken Sentence Tails) */
+  chunkDrillMode: ChunkDrillMode;
   cadence: RassiasDrillCadence;
   polarityMode: PolarityMode;
   enableNegativeAdverbs: boolean;
@@ -30,14 +57,13 @@ export interface AppSettings {
 
 const SETTINGS_STORAGE_KEY = 'rassias_app_settings_v1';
 const MASTERY_STORAGE_KEY = 'rassias_mastery_stats_v1';
+const PAIR_MASTERY_STORAGE_KEY = 'rassias_pair_mastery_v1';
+const SUBMODULE_PROGRESS_STORAGE_KEY = 'rassias_submodule_progress_v1';
+const STRAGGLERS_STORAGE_KEY = 'rassias_stragglers_v1';
 
 function getDefaultSettings(): AppSettings {
-  const frTier1 = getLanguagePack('fr')
-    .verbs.filter((v) => v.tier === 1)
-    .map((v) => v.id);
-  const esTier1 = getLanguagePack('es')
-    .verbs.filter((v) => v.tier === 1)
-    .map((v) => v.id);
+  const frDay1 = resolveSubModulePool('fr', 'fr-1.1');
+  const esDay1 = resolveSubModulePool('es', 'es-1.1');
 
   return {
     language: 'fr',
@@ -46,13 +72,19 @@ function getDefaultSettings(): AppSettings {
       es: 'es-ES',
     },
     activeVerbIdsByLang: {
-      fr: frTier1,
-      es: esTier1,
+      fr: frDay1.focusVerbIds,
+      es: esDay1.focusVerbIds,
     },
     activeTenseIdsByLang: {
-      fr: ['present', 'passe_compose', 'imparfait', 'futur_simple'],
-      es: ['presente', 'preterito_indefinido', 'preterito_imperfecto', 'futuro_simple'],
+      fr: frDay1.focusTenseIds,
+      es: esDay1.focusTenseIds,
     },
+    courseModeEnabled: true,
+    activeSubModuleIdByLang: {
+      fr: 'fr-1.1',
+      es: 'es-1.1',
+    },
+    chunkDrillMode: 'two_part',
     cadence: 'substitution',
     polarityMode: 'affirmative',
     enableNegativeAdverbs: true,
@@ -105,11 +137,29 @@ export function loadInitialSettings(): AppSettings {
       return filtered.length > 0 ? filtered : defaults.activeTenseIdsByLang[lang];
     };
 
+    const sanitizeSubModuleId = (lang: LanguageCode, candidate: unknown): string => {
+      if (typeof candidate !== 'string') return defaults.activeSubModuleIdByLang[lang];
+      const roadmap = getRoadmapForLanguage(lang);
+      return roadmap.some((sm) => sm.id === candidate)
+        ? candidate
+        : defaults.activeSubModuleIdByLang[lang];
+    };
+
     const rawTimer = parsed.beatTimerSeconds;
     const beatTimerSeconds =
       typeof rawTimer === 'number' && Number.isFinite(rawTimer) && rawTimer >= 0
         ? rawTimer
         : defaults.beatTimerSeconds;
+
+    const chunkDrillMode: ChunkDrillMode =
+      parsed.chunkDrillMode === 'full_sentence' || parsed.chunkDrillMode === 'two_part'
+        ? parsed.chunkDrillMode
+        : defaults.chunkDrillMode;
+
+    const courseModeEnabled =
+      typeof parsed.courseModeEnabled === 'boolean'
+        ? parsed.courseModeEnabled
+        : defaults.courseModeEnabled;
 
     const rawLocales =
       parsed.locales && typeof parsed.locales === 'object' ? parsed.locales : {};
@@ -123,6 +173,8 @@ export function loadInitialSettings(): AppSettings {
       ...parsed,
       language,
       beatTimerSeconds,
+      chunkDrillMode,
+      courseModeEnabled,
       locales: {
         fr: typeof rawLocales.fr === 'string' ? rawLocales.fr : defaults.locales.fr,
         es: typeof rawLocales.es === 'string' ? rawLocales.es : defaults.locales.es,
@@ -134,6 +186,10 @@ export function loadInitialSettings(): AppSettings {
       activeTenseIdsByLang: {
         fr: sanitizeTenseList('fr', parsed.activeTenseIdsByLang?.fr),
         es: sanitizeTenseList('es', parsed.activeTenseIdsByLang?.es),
+      },
+      activeSubModuleIdByLang: {
+        fr: sanitizeSubModuleId('fr', parsed.activeSubModuleIdByLang?.fr),
+        es: sanitizeSubModuleId('es', parsed.activeSubModuleIdByLang?.es),
       },
       byokConfig: {
         provider:
@@ -156,6 +212,12 @@ export function loadInitialSettings(): AppSettings {
 }
 
 export type MasteryByLanguage = Record<LanguageCode, Record<string, VerbMasteryStats>>;
+export type PairMasteryByLanguage = Record<LanguageCode, Record<string, PairMasteryStats>>;
+export type SubModuleProgressByLanguage = Record<
+  LanguageCode,
+  Record<string, SubModuleProgressStats>
+>;
+export type StragglersByLanguage = Record<LanguageCode, StragglerItem[]>;
 
 export function loadInitialMastery(): MasteryByLanguage {
   if (typeof window === 'undefined' || !window.localStorage) return { fr: {}, es: {} };
@@ -173,9 +235,63 @@ export function loadInitialMastery(): MasteryByLanguage {
   }
 }
 
+export function loadInitialPairMastery(): PairMasteryByLanguage {
+  if (typeof window === 'undefined' || !window.localStorage) return { fr: {}, es: {} };
+  try {
+    const raw = window.localStorage.getItem(PAIR_MASTERY_STORAGE_KEY);
+    if (!raw) return { fr: {}, es: {} };
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return { fr: {}, es: {} };
+    return {
+      fr: parsed.fr && typeof parsed.fr === 'object' ? parsed.fr : {},
+      es: parsed.es && typeof parsed.es === 'object' ? parsed.es : {},
+    };
+  } catch {
+    return { fr: {}, es: {} };
+  }
+}
+
+export function loadInitialSubModuleProgress(): SubModuleProgressByLanguage {
+  if (typeof window === 'undefined' || !window.localStorage) return { fr: {}, es: {} };
+  try {
+    const raw = window.localStorage.getItem(SUBMODULE_PROGRESS_STORAGE_KEY);
+    if (!raw) return { fr: {}, es: {} };
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return { fr: {}, es: {} };
+    return {
+      fr: parsed.fr && typeof parsed.fr === 'object' ? parsed.fr : {},
+      es: parsed.es && typeof parsed.es === 'object' ? parsed.es : {},
+    };
+  } catch {
+    return { fr: {}, es: {} };
+  }
+}
+
+export function loadInitialStragglers(): StragglersByLanguage {
+  if (typeof window === 'undefined' || !window.localStorage) return { fr: [], es: [] };
+  try {
+    const raw = window.localStorage.getItem(STRAGGLERS_STORAGE_KEY);
+    if (!raw) return { fr: [], es: [] };
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return { fr: [], es: [] };
+    return {
+      fr: Array.isArray(parsed.fr) ? parsed.fr : [],
+      es: Array.isArray(parsed.es) ? parsed.es : [],
+    };
+  } catch {
+    return { fr: [], es: [] };
+  }
+}
+
 export function useAppSettings() {
   const [settings, setSettings] = useState<AppSettings>(loadInitialSettings);
   const [masteryByLang, setMasteryByLang] = useState<MasteryByLanguage>(loadInitialMastery);
+  const [pairMasteryByLang, setPairMasteryByLang] =
+    useState<PairMasteryByLanguage>(loadInitialPairMastery);
+  const [subModuleProgressByLang, setSubModuleProgressByLang] =
+    useState<SubModuleProgressByLanguage>(loadInitialSubModuleProgress);
+  const [stragglersByLang, setStragglersByLang] =
+    useState<StragglersByLanguage>(loadInitialStragglers);
 
   useEffect(() => {
     try {
@@ -193,6 +309,39 @@ export function useAppSettings() {
     }
   }, [masteryByLang]);
 
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        PAIR_MASTERY_STORAGE_KEY,
+        JSON.stringify(pairMasteryByLang)
+      );
+    } catch {
+      // Ignore quota errors
+    }
+  }, [pairMasteryByLang]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        SUBMODULE_PROGRESS_STORAGE_KEY,
+        JSON.stringify(subModuleProgressByLang)
+      );
+    } catch {
+      // Ignore quota errors
+    }
+  }, [subModuleProgressByLang]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        STRAGGLERS_STORAGE_KEY,
+        JSON.stringify(stragglersByLang)
+      );
+    } catch {
+      // Ignore quota errors
+    }
+  }, [stragglersByLang]);
+
   const updateSettings = useCallback((patch: Partial<AppSettings>) => {
     setSettings((prev) => ({ ...prev, ...patch }));
   }, []);
@@ -209,8 +358,111 @@ export function useAppSettings() {
   }, []);
 
   /**
-   * Manual Unlock Progression: Adds the next `count` (default 3) locked verbs in curriculum order
-   * (Tier 1 -> Tier 2 -> Tier 3 -> Tier 4 -> Tier 5) for the active language.
+   * Selects a Course Sub-Module and configures active verbs, tenses, cadence, polarity, and timer.
+   */
+  const selectSubModule = useCallback(
+    (subModuleId: string, langOverride?: LanguageCode) => {
+      setSettings((prev) => {
+        const lang = langOverride ?? prev.language;
+        const pool = resolveSubModulePool(lang, subModuleId);
+        return {
+          ...prev,
+          language: lang,
+          courseModeEnabled: true,
+          activeSubModuleIdByLang: {
+            ...prev.activeSubModuleIdByLang,
+            [lang]: pool.subModule.id,
+          },
+          activeVerbIdsByLang: {
+            ...prev.activeVerbIdsByLang,
+            [lang]: pool.cumulativeVerbIds,
+          },
+          activeTenseIdsByLang: {
+            ...prev.activeTenseIdsByLang,
+            [lang]: pool.cumulativeTenseIds,
+          },
+          cadence: pool.subModule.recommendedCadence,
+          polarityMode: pool.subModule.recommendedPolarity,
+          beatTimerSeconds: pool.subModule.recommendedTimerSeconds,
+        };
+      });
+    },
+    []
+  );
+
+  /**
+   * Records a completed 15-snap Sub-Module Check and updates 2-Pass graduation state.
+   */
+  const recordSubModuleCheckResult = useCallback(
+    (
+      lang: LanguageCode,
+      report: SubModuleCheckReport,
+      updatedPairMastery?: Record<string, PairMasteryStats>,
+      updatedStragglers?: StragglerItem[]
+    ) => {
+      if (updatedPairMastery) {
+        setPairMasteryByLang((prev) => ({
+          ...prev,
+          [lang]: { ...updatedPairMastery },
+        }));
+      }
+      if (updatedStragglers) {
+        setStragglersByLang((prev) => ({
+          ...prev,
+          [lang]: [...updatedStragglers],
+        }));
+      }
+
+      setSubModuleProgressByLang((prev) => {
+        const langMap = prev[lang] ?? {};
+        const existing = langMap[report.subModuleId] ?? {
+          subModuleId: report.subModuleId,
+          passesCompleted: 0,
+          requiredPasses: report.requiredPasses,
+          graduated: false,
+          bestAccuracyPct: 0,
+          encoreCount: 0,
+          lastAttemptedAt: 0,
+        };
+
+        const graduated =
+          existing.graduated ||
+          report.outcome === 'graduated_clean' ||
+          report.outcome === 'graduated_with_stragglers';
+
+        const nextEntry: SubModuleProgressStats = {
+          subModuleId: report.subModuleId,
+          passesCompleted: Math.max(
+            existing.passesCompleted,
+            report.newPassesCompleted
+          ),
+          requiredPasses: report.requiredPasses,
+          graduated,
+          bestAccuracyPct: Math.max(
+            existing.bestAccuracyPct,
+            report.firstTryAccuracyPct
+          ),
+          encoreCount:
+            report.outcome === 'encore_required'
+              ? existing.encoreCount + 1
+              : existing.encoreCount,
+          lastAttemptedAt: Date.now(),
+        };
+
+        return {
+          ...prev,
+          [lang]: {
+            ...langMap,
+            [report.subModuleId]: nextEntry,
+          },
+        };
+      });
+    },
+    []
+  );
+
+  /**
+   * Manual Unlock Progression: Adds the next `count` (default 3) locked verbs in curriculum order.
    */
   const unlockNextVerbs = useCallback(
     (count = 3): VerbEntry[] => {
@@ -245,7 +497,6 @@ export function useAppSettings() {
       const lang = prev.language;
       const current = prev.activeVerbIdsByLang[lang];
       const exists = current.includes(verbId);
-      // Never allow 0 active verbs
       if (exists && current.length <= 1) return prev;
       const next = exists ? current.filter((id) => id !== verbId) : [...current, verbId];
       return {
@@ -272,7 +523,6 @@ export function useAppSettings() {
       }
 
       const next = Array.from(current);
-      // Ensure at least the first Tier 1 verb stays active
       const safeNext = next.length > 0 ? next : [pack.verbs[0].id];
 
       return {
@@ -341,11 +591,28 @@ export function useAppSettings() {
   }, []);
 
   const syncLanguageMastery = useCallback(
-    (lang: LanguageCode, updatedMap: Record<string, VerbMasteryStats>) => {
+    (
+      lang: LanguageCode,
+      updatedMap: Record<string, VerbMasteryStats>,
+      updatedPairMap?: Record<string, PairMasteryStats>,
+      updatedStragglers?: StragglerItem[]
+    ) => {
       setMasteryByLang((prev) => ({
         ...prev,
         [lang]: { ...updatedMap },
       }));
+      if (updatedPairMap) {
+        setPairMasteryByLang((prev) => ({
+          ...prev,
+          [lang]: { ...updatedPairMap },
+        }));
+      }
+      if (updatedStragglers) {
+        setStragglersByLang((prev) => ({
+          ...prev,
+          [lang]: [...updatedStragglers],
+        }));
+      }
     },
     []
   );
@@ -353,17 +620,27 @@ export function useAppSettings() {
   const currentLanguagePack = getLanguagePack(settings.language);
   const activeVerbIds = settings.activeVerbIdsByLang[settings.language];
   const activeTenseIds = settings.activeTenseIdsByLang[settings.language];
+  const activeSubModuleId = settings.activeSubModuleIdByLang[settings.language];
   const currentMastery = masteryByLang[settings.language];
+  const currentPairMastery = pairMasteryByLang[settings.language];
+  const currentSubModuleProgress = subModuleProgressByLang[settings.language];
+  const currentStragglers = stragglersByLang[settings.language];
 
   return {
     settings,
     currentLanguagePack,
     activeVerbIds,
     activeTenseIds,
+    activeSubModuleId,
     currentMastery,
+    currentPairMastery,
+    currentSubModuleProgress,
+    currentStragglers,
     updateSettings,
     updateBYOKConfig,
     setLanguage,
+    selectSubModule,
+    recordSubModuleCheckResult,
     unlockNextVerbs,
     toggleVerb,
     toggleVerbTier,

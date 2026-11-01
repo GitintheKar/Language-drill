@@ -88,6 +88,77 @@ export interface ConjugationResult {
   requiresFrenchSi?: boolean;
 }
 
+/**
+ * Option C Toggle for Non-Verb Lexical Chunks in the spoken drill:
+ * - 'two_part': 5-snap Non-Verb Chunk warmup first, followed by rapid bare/pronoun verb snaps
+ * - 'full_sentence': Spoken responses during the verb drill include the attached sentence tail
+ */
+export type ChunkDrillMode = 'two_part' | 'full_sentence';
+
+export type SubModuleCadencePreset =
+  | 'substitution'
+  | 'transformation'
+  | 'qa_flip'
+  | 'roulette';
+
+export interface LexicalChunk {
+  /** Stable identifier (e.g. 'es-en-casa', 'fr-en-retard') */
+  id: string;
+  /** Target-language spoken/written chunk (e.g. "en casa", "à la maison") */
+  target: string;
+  /** English meaning prompt (e.g. "at home") */
+  english: string;
+  /** Optional verb IDs this chunk naturally attaches to as a sentence tail */
+  attachToVerbIds?: string[];
+}
+
+export interface DialogueLine {
+  speaker: 'A' | 'B';
+  speakerName: string;
+  target: string;
+  english: string;
+  audioTip?: string;
+}
+
+export interface SubModuleConfig {
+  /** Stable semantic ID (survives array reordering) */
+  id: string;
+  /** Macro-phase number */
+  phase: number;
+  /** Macro-phase title */
+  phaseTitle: string;
+  /** Sub-module title */
+  title: string;
+  /** Delta: newly unlocked verb IDs at this step (empty when introducing a new tense on known verbs) */
+  newVerbIds: string[];
+  /** Delta: newly unlocked tense IDs at this step (empty when adding new verbs to known tenses) */
+  newTenseIds: string[];
+  /**
+   * Optional subset of cumulative unlocked verbs to spotlight in this sub-module
+   * (e.g. regular verbs first when introducing Preterite/Passé Composé, then irregulars next).
+   */
+  focusVerbIdsOverride?: string[];
+  /**
+   * Optional subset of cumulative unlocked tenses to spotlight in this sub-module
+   * (e.g. contrasting Presente and Futuro Próximo in Transformation cadence).
+   */
+  focusTenseIdsOverride?: string[];
+  /** Delta: newly introduced non-verb vocabulary chunks / sentence tails */
+  newChunks: LexicalChunk[];
+  /** Recommended Rassias drill cadence */
+  recommendedCadence: SubModuleCadencePreset;
+  /** Recommended polarity mode */
+  recommendedPolarity: PolarityMode;
+  /** Recommended reflex beat timer in seconds */
+  recommendedTimerSeconds: number;
+  /** Graded passes required at >= 80% before graduating (defaults to 2) */
+  requiredPasses?: number;
+  /** "How the Ear Hears It" sound/stress rule */
+  earRule: string;
+  /** Optional built-in baseline dialogue for immediate offline use */
+  starterDialogue?: DialogueLine[];
+}
+
 export interface LanguagePack {
   code: LanguageCode;
   name: string;
@@ -97,6 +168,7 @@ export interface LanguagePack {
   pronouns: PronounDefinition[];
   tenses: TenseConfig[];
   verbs: VerbEntry[];
+  roadmap?: SubModuleConfig[];
   /** Whether the language naturally drops subject pronouns in everyday speech */
   isProDrop: boolean;
   conjugate: (

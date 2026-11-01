@@ -5,6 +5,7 @@ import {
   PersonIndex,
 } from '../types';
 import { SPANISH_CURRICULUM } from './curriculum';
+import { SPANISH_ROADMAP } from './roadmap';
 import { SPANISH_PRONOUNS, SPANISH_TENSES } from './tenses';
 
 type SixForms = [string, string, string, string, string, string];
@@ -650,6 +651,7 @@ export const SPANISH_LANGUAGE_PACK: LanguagePack = {
   pronouns: SPANISH_PRONOUNS,
   tenses: SPANISH_TENSES,
   verbs: SPANISH_CURRICULUM,
+  roadmap: SPANISH_ROADMAP,
   isProDrop: true,
   conjugate: conjugateSpanish,
   conjugateAllPersons: (

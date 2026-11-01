@@ -5,6 +5,7 @@ import {
   PersonIndex,
 } from '../types';
 import { FRENCH_CURRICULUM } from './curriculum';
+import { FRENCH_ROADMAP } from './roadmap';
 import { FRENCH_PRONOUNS, FRENCH_TENSES } from './tenses';
 
 type SixForms = [string, string, string, string, string, string];
@@ -696,6 +697,7 @@ export const FRENCH_LANGUAGE_PACK: LanguagePack = {
   pronouns: FRENCH_PRONOUNS,
   tenses: FRENCH_TENSES,
   verbs: FRENCH_CURRICULUM,
+  roadmap: FRENCH_ROADMAP,
   isProDrop: false,
   conjugate: conjugateFrench,
   conjugateAllPersons: (
