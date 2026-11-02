@@ -451,8 +451,39 @@ export class RassiasDrillDirector {
     };
   }
 
-  private pickNextNegationType(): Exclude<NegationType, 'none'> {
+  private isNegativeAdverbsAllowed(activePool?: ResolvedSubModulePool | null): boolean {
     if (!this.config.enableNegativeAdverbs) {
+      return false;
+    }
+    if (activePool) {
+      return activePool.subModule.enableNegativeAdverbs ?? activePool.subModule.phase >= 2;
+    }
+    if (this.config.activeSubModuleId) {
+      const pool = resolveSubModulePool(
+        this.config.language,
+        this.config.activeSubModuleId,
+        this.config.customRoadmap
+      );
+      return pool.subModule.enableNegativeAdverbs ?? pool.subModule.phase >= 2;
+    }
+    return true;
+  }
+
+  private sanitizeNegationForPool(
+    negation: NegationType,
+    activePool?: ResolvedSubModulePool | null
+  ): NegationType {
+    if (negation === 'none') return 'none';
+    if (!this.isNegativeAdverbsAllowed(activePool)) {
+      return 'pas';
+    }
+    return negation;
+  }
+
+  private pickNextNegationType(
+    activePool?: ResolvedSubModulePool | null
+  ): Exclude<NegationType, 'none'> {
+    if (!this.isNegativeAdverbsAllowed(activePool)) {
       return 'pas';
     }
     const sequence: Exclude<NegationType, 'none'>[] = ['pas', 'pas', 'jamais', 'plus'];
@@ -586,7 +617,7 @@ export class RassiasDrillDirector {
           dueItem.verbId,
           dueItem.tenseId,
           dueItem.person,
-          dueItem.negation,
+          this.sanitizeNegationForPool(dueItem.negation, activePool),
           true,
           false,
           activePool,
@@ -601,11 +632,13 @@ export class RassiasDrillDirector {
     const polarity = this.config.polarityMode ?? 'affirmative';
     let negation: NegationType = 'none';
     if (polarity === 'negative') {
-      negation = this.pickNextNegationType();
+      negation = this.pickNextNegationType(activePool);
     } else if (polarity === 'mixed') {
       this.mixedPolarityStep += 1;
       negation =
-        this.mixedPolarityStep % 2 === 0 ? this.pickNextNegationType() : 'none';
+        this.mixedPolarityStep % 2 === 0
+          ? this.pickNextNegationType(activePool)
+          : 'none';
     } else {
       negation = 'none';
     }
@@ -633,7 +666,7 @@ export class RassiasDrillDirector {
             pickedStraggler.verbId,
             pickedStraggler.tenseId,
             pickedStraggler.person,
-            pickedStraggler.negation,
+            this.sanitizeNegationForPool(pickedStraggler.negation, activePool),
             false,
             false,
             activePool,

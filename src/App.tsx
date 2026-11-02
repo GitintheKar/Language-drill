@@ -364,6 +364,8 @@ export const App: React.FC = () => {
                 ? `Sub-Module ${activeSubModulePool.displayCode}: ${activeSubModulePool.subModule.title} (Pass ${passesCompleted}/${requiredPasses})`
                 : undefined
             }
+            cadence={settings.cadence}
+            polarityMode={settings.polarityMode}
             interimTranscript={interimTranscript}
             audioLevel={audioLevel}
             snapVisualPulse={snapVisualPulse}

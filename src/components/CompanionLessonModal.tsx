@@ -46,11 +46,11 @@ export const CompanionLessonModal: React.FC<CompanionLessonModalProps> = ({
   const [activeLineIdx, setActiveLineIdx] = useState<number | null>(null);
   const [shadowingPauseEnabled, setShadowingPauseEnabled] = useState(false);
   const [revealedWarmups, setRevealedWarmups] = useState<Record<number, boolean>>({});
-  const playbackAbortRef = useRef(false);
+  const playbackSessionRef = useRef(0);
 
   useEffect(() => {
     if (!isOpen) {
-      playbackAbortRef.current = true;
+      playbackSessionRef.current += 1;
       cancelATSpeech();
       setIsPlayingScene(false);
       setActiveLineIdx(null);
@@ -59,7 +59,7 @@ export const CompanionLessonModal: React.FC<CompanionLessonModalProps> = ({
 
   useEffect(() => {
     setRevealedWarmups({});
-    playbackAbortRef.current = true;
+    playbackSessionRef.current += 1;
     cancelATSpeech();
     setIsPlayingScene(false);
     setActiveLineIdx(null);
@@ -68,15 +68,18 @@ export const CompanionLessonModal: React.FC<CompanionLessonModalProps> = ({
   if (!isOpen || !lesson) return null;
 
   const stopScenePlayback = () => {
-    playbackAbortRef.current = true;
+    playbackSessionRef.current += 1;
     cancelATSpeech();
     setIsPlayingScene(false);
     setActiveLineIdx(null);
   };
 
   const playSingleLine = async (idx: number) => {
-    stopScenePlayback();
-    playbackAbortRef.current = false;
+    playbackSessionRef.current += 1;
+    const sessionId = playbackSessionRef.current;
+    cancelATSpeech();
+    setIsPlayingScene(false);
+
     const line = lesson.dialogue[idx];
     if (!line) return;
 
@@ -87,7 +90,7 @@ export const CompanionLessonModal: React.FC<CompanionLessonModalProps> = ({
       pitch: line.speaker === 'A' ? 0.92 : 1.1,
       rate: 0.96,
     });
-    if (!playbackAbortRef.current) {
+    if (playbackSessionRef.current === sessionId) {
       setActiveLineIdx(null);
     }
   };
@@ -98,11 +101,13 @@ export const CompanionLessonModal: React.FC<CompanionLessonModalProps> = ({
       return;
     }
 
-    playbackAbortRef.current = false;
+    playbackSessionRef.current += 1;
+    const sessionId = playbackSessionRef.current;
+    cancelATSpeech();
     setIsPlayingScene(true);
 
     for (let i = 0; i < lesson.dialogue.length; i++) {
-      if (playbackAbortRef.current) break;
+      if (playbackSessionRef.current !== sessionId) break;
       const line = lesson.dialogue[i];
       setActiveLineIdx(i);
 
@@ -113,14 +118,16 @@ export const CompanionLessonModal: React.FC<CompanionLessonModalProps> = ({
         rate: 0.96,
       });
 
-      if (playbackAbortRef.current) break;
+      if (playbackSessionRef.current !== sessionId) break;
 
       const pauseMs = shadowingPauseEnabled ? 3000 : 420;
       await new Promise((r) => setTimeout(r, pauseMs));
     }
 
-    setIsPlayingScene(false);
-    setActiveLineIdx(null);
+    if (playbackSessionRef.current === sessionId) {
+      setIsPlayingScene(false);
+      setActiveLineIdx(null);
+    }
   };
 
   const speakChunkCard = async (target: string, exampleTarget: string) => {

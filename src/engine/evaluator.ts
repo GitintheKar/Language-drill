@@ -484,6 +484,104 @@ function isAmbiguousSpanishForm(target: ConjugationResult): boolean {
   return yoForm === elForm;
 }
 
+/**
+ * Converts a Spanish phrase into a canonical Latin American phonetic key
+ * (handling seseo c/s/z, betacismo b/v, yeísmo ll/y, silent h, and x/j in México/Méjico).
+ */
+export function toSpanishPhoneticKey(phrase: string): string {
+  return stripAccents(normalizeTranscript(phrase))
+    .split(' ')
+    .filter(Boolean)
+    .map((w) =>
+      w
+        .replace(/^h/, '')
+        .replace(/ll/g, 'y')
+        .replace(/v/g, 'b')
+        .replace(/z/g, 's')
+        .replace(/ce/g, 'se')
+        .replace(/ci/g, 'si')
+        .replace(/mexic/g, 'mejic')
+    )
+    .join(' ');
+}
+
+function levenshteinDistance(a: string, b: string): number {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  const dp: number[][] = Array.from({ length: a.length + 1 }, () =>
+    new Array(b.length + 1).fill(0)
+  );
+  for (let i = 0; i <= a.length; i++) dp[i][0] = i;
+  for (let j = 0; j <= b.length; j++) dp[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(
+        dp[i - 1][j] + 1,
+        dp[i][j - 1] + 1,
+        dp[i - 1][j - 1] + cost
+      );
+    }
+  }
+  return dp[a.length][b.length];
+}
+
+function collidesWithAnotherSpanishForm(
+  heardVerb: string,
+  target: ConjugationResult
+): boolean {
+  const normHeard = stripAccents(heardVerb);
+  const pack = getLanguagePack('es');
+  for (const tense of pack.tenses) {
+    const allPersons = pack.conjugateAllPersons(
+      target.verbId,
+      tense.id,
+      target.negation
+    );
+    for (const c of allPersons) {
+      if (c.tenseId === target.tenseId && c.person === target.person) continue;
+      if (stripAccents(normalizeTranscript(c.verbForm)) === normHeard) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Expands common continuous-speech ASR boundary fusions in Spanish:
+ * - "es de México" -> often transcribed by ASR as "este México" (/es ðe/ -> /este/)
+ * - "va a hablar" / "voy a hablar" -> often transcribed as "va hablar" / "voya hablar"
+ */
+function expandSpanishBoundaryFusions(
+  cleanedInput: string,
+  target?: ConjugationResult,
+  tailChunk?: LexicalChunk
+): string {
+  let out = cleanedInput;
+
+  const chunkNorm = tailChunk ? normalizeTranscript(tailChunk.target) : '';
+  const chunkStartsWithDe = chunkNorm.startsWith('de ');
+  const targetIsEs = target?.verbForm === 'es' || target?.verbForm === 'no es';
+
+  if (targetIsEs || chunkStartsWithDe) {
+    out = out
+      .replace(/^(el|él|ella|usted)\s+este\s+/i, '$1 es de ')
+      .replace(/^no\s+este\s+/i, 'no es de ')
+      .replace(/^este\s+/i, 'es de ');
+  }
+
+  // Handle Futuro Próximo "voya " -> "voy a " or missing "a" in "va <infinitive>" / "vamos <infinitive>"
+  if (target?.tenseId === 'futuro_proximo') {
+    out = out
+      .replace(/\bvoya\s+/g, 'voy a ')
+      .replace(/\b(voy|vas|va|vamos|vais|van)\s+(?!a\b)([a-záéíóúñ]+r\b)/g, '$1 a $2');
+  }
+
+  return out;
+}
+
 function findSpanishStressCollision(
   heardVerb: string,
   target: ConjugationResult
@@ -622,6 +720,25 @@ function evaluateSpanish(
     }
   }
 
+  // Phonetic & communicative ASR tolerance (b/v, c/s/z, ll/y, silent h)
+  const heardPhonetic = toSpanishPhoneticKey(parsed.verbPart);
+  for (const validVerb of validBareVerbs) {
+    const normValid = normalizeTranscript(validVerb);
+    const validPhonetic = toSpanishPhoneticKey(normValid);
+
+    if (heardPhonetic === validPhonetic && !collidesWithAnotherSpanishForm(parsed.verbPart, target)) {
+      return {
+        isCorrect: true,
+        matchType: 'phonetic_homophone',
+        heardNormalized: cleanedInput,
+        expectedDisplay: target.fullForm,
+        expectedSpoken: target.verbForm,
+        feedbackMessage: options?.aiPronunciationNote || `¡Muy bien! (« ${target.verbForm} »)`,
+        shouldTriggerRepeat: false,
+      };
+    }
+  }
+
   if (target.negation !== 'none') {
     return {
       isCorrect: false,
@@ -675,6 +792,33 @@ export function evaluateSpokenConjugation(
   return primaryEval;
 }
 
+function buildCandidateChunkTails(chunk: LexicalChunk): Set<string> {
+  const normTail = normalizeTranscript(chunk.target);
+  const accentFreeTail = stripAccents(normTail);
+  const phoneticTail = toSpanishPhoneticKey(normTail);
+  const candidateTails = new Set<string>([normTail, accentFreeTail, phoneticTail]);
+
+  if (normTail.endsWith('o')) {
+    const fem = normTail.slice(0, -1) + 'a';
+    candidateTails.add(fem);
+    candidateTails.add(stripAccents(fem));
+    candidateTails.add(normTail + 's');
+    candidateTails.add(stripAccents(normTail + 's'));
+    candidateTails.add(fem + 's');
+    candidateTails.add(stripAccents(fem + 's'));
+  }
+
+  // Allow natural intensifiers ("mucha hambre", "muy cansado", "un poco cansada")
+  for (const base of Array.from(candidateTails)) {
+    candidateTails.add(`mucha ${base}`);
+    candidateTails.add(`mucho ${base}`);
+    candidateTails.add(`muy ${base}`);
+    candidateTails.add(`un poco ${base}`);
+  }
+
+  return candidateTails;
+}
+
 function stripTrailingLexicalChunk(
   cleanedInput: string,
   chunk?: LexicalChunk
@@ -684,32 +828,41 @@ function stripTrailingLexicalChunk(
   }
 
   const normTail = normalizeTranscript(chunk.target);
-  const accentFreeTail = stripAccents(normTail);
   if (!normTail) {
     return { verbOnlyInput: cleanedInput, matchedTail: true };
   }
 
-  // Also generate gender-variant tail if chunk ends in -o (e.g. "cansado" -> accept "cansada" / "cansados")
-  const candidateTails = new Set<string>([normTail, accentFreeTail]);
-  if (normTail.endsWith('o')) {
-    const fem = normTail.slice(0, -1) + 'a';
-    candidateTails.add(fem);
-    candidateTails.add(stripAccents(fem));
-    candidateTails.add(normTail + 's');
-    candidateTails.add(fem + 's');
-  }
-
+  const candidateTails = buildCandidateChunkTails(chunk);
   const accentFreeInput = stripAccents(cleanedInput);
-  for (const candidate of candidateTails) {
+  const phoneticInput = toSpanishPhoneticKey(cleanedInput);
+
+  // Sort longest first so "mucha hambre" strips before "hambre"
+  const sortedCandidates = Array.from(candidateTails).sort(
+    (a, b) => b.length - a.length
+  );
+
+  for (const candidate of sortedCandidates) {
     if (cleanedInput.endsWith(' ' + candidate)) {
-      const stripped = cleanedInput.slice(0, cleanedInput.length - candidate.length).trim();
+      const stripped = cleanedInput
+        .slice(0, cleanedInput.length - candidate.length)
+        .trim();
       if (stripped.length > 0) {
         return { verbOnlyInput: stripped, matchedTail: true };
       }
     }
     if (accentFreeInput.endsWith(' ' + candidate)) {
-      const stripped = cleanedInput.slice(0, cleanedInput.length - candidate.length).trim();
+      const stripped = cleanedInput
+        .slice(0, cleanedInput.length - candidate.length)
+        .trim();
       if (stripped.length > 0) {
+        return { verbOnlyInput: stripped, matchedTail: true };
+      }
+    }
+    if (phoneticInput.endsWith(' ' + candidate)) {
+      const words = cleanedInput.split(' ');
+      const candWordCount = candidate.split(' ').length;
+      if (words.length > candWordCount) {
+        const stripped = words.slice(0, words.length - candWordCount).join(' ');
         return { verbOnlyInput: stripped, matchedTail: true };
       }
     }
@@ -724,13 +877,18 @@ function evaluateSingleTranscript(
   options?: EvaluationOptions
 ): EvaluationResult {
   const normalized = normalizeTranscript(rawTranscript);
-  const { cleaned, saidOui } = stripOptionalTriggerAndInterjection(
+  const { cleaned: rawCleaned, saidOui } = stripOptionalTriggerAndInterjection(
     normalized,
     target.language,
     target.tenseId
   );
 
   const tailChunk = options?.expectedTailChunk;
+  const cleaned =
+    target.language === 'es'
+      ? expandSpanishBoundaryFusions(rawCleaned, target, tailChunk)
+      : rawCleaned;
+
   const requireTail = Boolean(options?.requireTailInResponse && tailChunk);
   const fullExpectedWithTail = tailChunk
     ? `${target.fullForm} ${tailChunk.target}`
@@ -753,10 +911,28 @@ function evaluateSingleTranscript(
 
   const { verbOnlyInput, matchedTail } = stripTrailingLexicalChunk(cleaned, tailChunk);
 
-  const baseEval =
+  let baseEval =
     target.language === 'fr'
       ? evaluateFrench(verbOnlyInput, saidOui, target, options)
       : evaluateSpanish(verbOnlyInput, target, options);
+
+  // In 'two_part' mode (requireTail === false), if the learner spoke the valid verb followed by
+  // a slightly garbled or expanded version of the optional scene tail, do not penalize them!
+  if (!baseEval.isCorrect && !requireTail && tailChunk && !matchedTail) {
+    for (const acc of target.acceptedForms) {
+      const normAcc = normalizeTranscript(acc);
+      if (normAcc && cleaned.startsWith(normAcc + ' ')) {
+        const candidateEval =
+          target.language === 'fr'
+            ? evaluateFrench(normAcc, saidOui, target, options)
+            : evaluateSpanish(normAcc, target, options);
+        if (candidateEval.isCorrect) {
+          baseEval = candidateEval;
+          break;
+        }
+      }
+    }
+  }
 
   // If the conjugation was right, but full_sentence mode required the tail and it was omitted:
   if (baseEval.isCorrect && requireTail && !matchedTail && tailChunk) {
@@ -796,34 +972,46 @@ export function evaluateSpokenChunk(
 ): EvaluationResult {
   const candidates = [rawTranscript, ...(alternatives ?? [])];
   const normExpected = normalizeTranscript(chunk.target);
-  const accentFreeExpected = stripAccents(normExpected);
+  const candidateTails = buildCandidateChunkTails(chunk);
 
   for (const candidate of candidates) {
-    const normHeard = normalizeTranscript(candidate)
+    const rawNorm = normalizeTranscript(candidate)
       .replace(/^(répétez|repetez|repita)\s*/i, '')
       .trim();
-    if (!normHeard) continue;
+    if (!rawNorm) continue;
 
+    const normHeard =
+      language === 'es'
+        ? expandSpanishBoundaryFusions(rawNorm, undefined, chunk)
+        : rawNorm;
     const accentFreeHeard = stripAccents(normHeard);
-    const exactOrContains =
-      normHeard === normExpected ||
-      accentFreeHeard === accentFreeExpected ||
-      normHeard.endsWith(' ' + normExpected) ||
-      accentFreeHeard.endsWith(' ' + accentFreeExpected);
+    const phoneticHeard = toSpanishPhoneticKey(normHeard);
 
-    if (exactOrContains) {
-      return {
-        isCorrect: true,
-        matchType: normHeard === normExpected ? 'exact' : 'accent_tolerant',
-        heardNormalized: normHeard,
-        expectedDisplay: chunk.target,
-        expectedSpoken: chunk.target,
-        feedbackMessage:
-          language === 'fr'
-            ? `Très bien ! (« ${chunk.target} »)`
-            : `¡Muy bien! (« ${chunk.target} »)`,
-        shouldTriggerRepeat: false,
-      };
+    for (const tailVariant of candidateTails) {
+      const exactOrContains =
+        normHeard === tailVariant ||
+        accentFreeHeard === tailVariant ||
+        phoneticHeard === tailVariant ||
+        normHeard.endsWith(' ' + tailVariant) ||
+        accentFreeHeard.endsWith(' ' + tailVariant) ||
+        phoneticHeard.endsWith(' ' + tailVariant) ||
+        (tailVariant.length >= 5 &&
+          levenshteinDistance(phoneticHeard, tailVariant) === 1);
+
+      if (exactOrContains) {
+        return {
+          isCorrect: true,
+          matchType: normHeard === normExpected ? 'exact' : 'accent_tolerant',
+          heardNormalized: normHeard,
+          expectedDisplay: chunk.target,
+          expectedSpoken: chunk.target,
+          feedbackMessage:
+            language === 'fr'
+              ? `Très bien ! (« ${chunk.target} »)`
+              : `¡Muy bien! (« ${chunk.target} »)`,
+          shouldTriggerRepeat: false,
+        };
+      }
     }
   }
 

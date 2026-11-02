@@ -169,6 +169,11 @@ function pickBestVoice(locale: string, langCode: LanguageCode): SpeechSynthesisV
   return preferred ?? pool[0];
 }
 
+let activeSpeechToken = 0;
+// Keep a strong reference to the active utterance so Chromium never garbage-collects it mid-speech
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+let activeUtteranceRef: SpeechSynthesisUtterance | null = null;
+
 /**
  * Speaks a phrase out loud as the Dartmouth Assistant Teacher (AT) and resolves when finished.
  */
@@ -190,40 +195,70 @@ export function speakATUtterance(
     return Promise.resolve();
   }
 
+  activeSpeechToken += 1;
+  const myToken = activeSpeechToken;
+
   return new Promise((resolve) => {
     try {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = options.locale;
-      utterance.rate = options.rate ?? 1.0; // Natural authentic Rassias cadence
-      utterance.pitch = options.pitch ?? 1.0;
-
-      const voice = pickBestVoice(options.locale, options.language);
-      if (voice) {
-        utterance.voice = voice;
+      const synth = window.speechSynthesis;
+      const wasBusy = synth.speaking || synth.pending;
+      if (wasBusy) {
+        synth.cancel();
       }
 
-      let settled = false;
-      const finish = () => {
-        if (!settled) {
-          settled = true;
+      const startSpeaking = () => {
+        if (activeSpeechToken !== myToken) {
           resolve();
+          return;
         }
+
+        const utterance = new SpeechSynthesisUtterance(text);
+        activeUtteranceRef = utterance;
+        utterance.lang = options.locale;
+        utterance.rate = options.rate ?? 1.0; // Natural authentic Rassias cadence
+        utterance.pitch = options.pitch ?? 1.0;
+
+        const voice = pickBestVoice(options.locale, options.language);
+        if (voice) {
+          utterance.voice = voice;
+        }
+
+        let settled = false;
+        const finish = () => {
+          if (!settled) {
+            settled = true;
+            if (activeUtteranceRef === utterance) {
+              activeUtteranceRef = null;
+            }
+            resolve();
+          }
+        };
+
+        // Safety timeout in case mobile/desktop speechSynthesis onend doesn't fire
+        const safetyTimer = setTimeout(
+          finish,
+          Math.max(6500, text.length * 200)
+        );
+
+        utterance.onend = () => {
+          clearTimeout(safetyTimer);
+          finish();
+        };
+        utterance.onerror = () => {
+          clearTimeout(safetyTimer);
+          finish();
+        };
+
+        synth.speak(utterance);
       };
 
-      // Safety timeout in case mobile speechSynthesis onend doesn't fire
-      const safetyTimer = setTimeout(finish, Math.max(6500, text.length * 200));
-
-      utterance.onend = () => {
-        clearTimeout(safetyTimer);
-        finish();
-      };
-      utterance.onerror = () => {
-        clearTimeout(safetyTimer);
-        finish();
-      };
-
-      window.speechSynthesis.speak(utterance);
+      // In Chromium/Windows, calling synth.cancel() and synth.speak() in the same tick
+      // can replay the previous utterance buffer or drop the new utterance. A 50ms flush prevents this.
+      if (wasBusy) {
+        setTimeout(startSpeaking, 50);
+      } else {
+        startSpeaking();
+      }
     } catch {
       resolve();
     }
@@ -231,6 +266,8 @@ export function speakATUtterance(
 }
 
 export function cancelATSpeech(): void {
+  activeSpeechToken += 1;
+  activeUtteranceRef = null;
   if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
     try {
       window.speechSynthesis.cancel();

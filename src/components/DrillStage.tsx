@@ -17,9 +17,110 @@ import {
 import {
   DrillPromptCard,
   DrillStageStatus,
+  RassiasDrillCadence,
   SubModuleCheckReport,
 } from '../engine/drillDirector';
 import { EvaluationResult } from '../engine/evaluator';
+import { NegationType, PolarityMode } from '../languages/types';
+
+function describeDrillCadence(cadence: RassiasDrillCadence = 'substitution'): {
+  label: string;
+  rule: string;
+} {
+  switch (cadence) {
+    case 'substitution':
+      return {
+        label: 'Substitution Drill',
+        rule: 'Same verb & tense — conjugate for each new person.',
+      };
+    case 'qa_flip':
+      return {
+        label: 'Question ↔ Answer Flip',
+        rule: "Answer the AT's question (flipping tú/usted ↔ yo, ustedes ↔ nosotros).",
+      };
+    case 'transformation':
+      return {
+        label: 'Tense Shift',
+        rule: 'Same person — shift the verb across tenses using the time trigger.',
+      };
+    case 'roulette':
+      return {
+        label: 'Full Roulette',
+        rule: 'Random verb, tense, and person on every snap.',
+      };
+  }
+}
+
+function describePolarityMode(polarity: PolarityMode = 'affirmative'): {
+  label: string;
+  rule: string;
+} {
+  switch (polarity) {
+    case 'affirmative':
+      return {
+        label: 'Affirmative Only (+)',
+        rule: 'Every response is positive.',
+      };
+    case 'ping_pong':
+      return {
+        label: '2-Beat Ping-Pong (+ → −)',
+        rule: 'Beat 1: Say it Affirmative (+) → Beat 2: Flip the exact same form to Negative (−).',
+      };
+    case 'negative':
+      return {
+        label: 'Negative Only (−)',
+        rule: 'Every response is negative.',
+      };
+    case 'mixed':
+      return {
+        label: 'Mixed Polarity (+ / −)',
+        rule: 'Alternates between Affirmative (+) and Negative (−) — watch the prompt badge.',
+      };
+  }
+}
+
+function formatCenterNegationCue(
+  language: 'fr' | 'es',
+  negation: NegationType
+): { badgeText: string; formulaHint: string } | null {
+  if (negation === 'none') return null;
+
+  if (language === 'es') {
+    if (negation === 'jamais') {
+      return {
+        badgeText: '🚫 NEGATIVE (−): Use « nunca » ("never")',
+        formulaHint: 'nunca + verb (or no + verb + nunca)',
+      };
+    }
+    if (negation === 'plus') {
+      return {
+        badgeText: '🚫 NEGATIVE (−): Use « ya no » ("no longer / anymore")',
+        formulaHint: 'ya no + verb',
+      };
+    }
+    return {
+      badgeText: '🚫 NEGATIVE (−): Use « no » ("not")',
+      formulaHint: 'no + conjugated verb',
+    };
+  }
+
+  if (negation === 'jamais') {
+    return {
+      badgeText: '🚫 NEGATIVE (−): Use « ne … jamais » ("never")',
+      formulaHint: 'subject + ne/n’ + verb + jamais',
+    };
+  }
+  if (negation === 'plus') {
+    return {
+      badgeText: '🚫 NEGATIVE (−): Use « ne … plus » ("no longer")',
+      formulaHint: 'subject + ne/n’ + verb + plus',
+    };
+  }
+  return {
+    badgeText: '🚫 NEGATIVE (−): Use « ne … pas » ("not")',
+    formulaHint: 'subject + ne/n’ + verb + pas',
+  };
+}
 
 interface DrillStageProps {
   card: DrillPromptCard | null;
@@ -28,6 +129,8 @@ interface DrillStageProps {
   lastEvaluation: EvaluationResult | null;
   checkReport?: SubModuleCheckReport | null;
   activeSubModuleLabel?: string;
+  cadence?: RassiasDrillCadence;
+  polarityMode?: PolarityMode;
   interimTranscript: string;
   audioLevel: number;
   snapVisualPulse: boolean;
@@ -54,6 +157,8 @@ export const DrillStage: React.FC<DrillStageProps> = ({
   lastEvaluation,
   checkReport,
   activeSubModuleLabel,
+  cadence = 'substitution',
+  polarityMode = 'affirmative',
   interimTranscript,
   audioLevel,
   snapVisualPulse,
@@ -74,6 +179,9 @@ export const DrillStage: React.FC<DrillStageProps> = ({
 }) => {
   const [typedInput, setTypedInput] = React.useState('');
 
+  const cadenceInfo = describeDrillCadence(cadence);
+  const polarityInfo = describePolarityMode(polarityMode);
+
   const handleTextSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!typedInput.trim()) return;
@@ -93,9 +201,33 @@ export const DrillStage: React.FC<DrillStageProps> = ({
           </span>
         )}
         <h2 className="text-2xl font-bold mb-2">Dartmouth Rassias Drill</h2>
-        <p className="text-muted text-sm max-w-md mb-6">
+        <p className="text-muted text-sm max-w-md mb-4">
           High-energy oral verb conjugation training. Review the Companion Lesson, then run a 15-Snap Sub-Module Check or free drill.
         </p>
+
+        {/* Active Drill Mode & Rules Preview Card */}
+        <div className="w-full max-w-lg mb-6 p-3.5 rounded-xl bg-surface-raised/60 border border-border/70 text-left space-y-1.5">
+          <div className="flex items-center justify-between flex-wrap gap-1.5">
+            <span className="text-[11px] uppercase tracking-wider font-extrabold text-muted">
+              Active Drill Rules
+            </span>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="badge badge-primary text-xs font-bold">
+                {cadenceInfo.label}
+              </span>
+              <span className="badge badge-accent text-xs font-bold">
+                {polarityInfo.label}
+              </span>
+            </div>
+          </div>
+          <p className="text-xs text-foreground">
+            <strong>Flow:</strong> {cadenceInfo.rule}
+          </p>
+          <p className="text-xs text-muted">
+            <strong>Polarity:</strong> {polarityInfo.rule}
+          </p>
+        </div>
+
         <div className="flex flex-wrap items-center justify-center gap-3">
           {onOpenCompanionLesson && (
             <button
@@ -136,6 +268,8 @@ export const DrillStage: React.FC<DrillStageProps> = ({
   const isListening =
     status === 'listening_initial' || status === 'listening_repeat';
 
+  const centerNegationCue = formatCenterNegationCue(card.language, card.negation);
+
   return (
     <div
       className={`card-stage relative flex flex-col justify-between ${
@@ -143,67 +277,83 @@ export const DrillStage: React.FC<DrillStageProps> = ({
       } ${inRepeatLoop ? 'repeat-border-active' : ''}`}
     >
       {/* Top Status & Cadence Row */}
-      <div className="flex items-center justify-between pb-3 border-b border-border/40 text-xs flex-wrap gap-2">
-        <div className="flex items-center gap-2 flex-wrap">
-          {card.isBoomerang && (
-            <span className="badge badge-boomerang flex items-center gap-1">
-              <RotateCcw className="w-3 h-3" /> Boomerang Recall
+      <div className="flex flex-col gap-2 pb-3 border-b border-border/40 text-xs">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span
+              className="badge badge-primary font-bold"
+              title={cadenceInfo.rule}
+            >
+              {cadenceInfo.label}
             </span>
-          )}
-          {card.isPingPongSecondBeat && (
-            <span className="badge badge-pingpong flex items-center gap-1">
-              <Flame className="w-3 h-3" /> Beat 2: Negative Flip!
+            <span
+              className="badge badge-accent font-bold"
+              title={polarityInfo.rule}
+            >
+              {polarityInfo.label}
             </span>
-          )}
-          <span className="badge badge-neutral font-semibold">
-            {card.tenseName}
-          </span>
-          {card.poolSource === 'focus' && (
-            <span className="badge badge-primary text-[11px]">70% Focus</span>
-          )}
-          {card.poolSource === 'review' && (
-            <span className="badge badge-subtle text-[11px]">30% Review</span>
-          )}
-          {card.poolSource === 'straggler' && (
-            <span className="badge badge-warning text-[11px]">Straggler Recall</span>
-          )}
-          {card.poolSource === 'chunk_warmup' && (
-            <span className="badge badge-accent text-[11px] flex items-center gap-1">
-              <Layers className="w-3 h-3" /> Chunk Warmup
+            <span className="badge badge-neutral font-semibold">
+              {card.tenseName}
             </span>
-          )}
+            {card.isBoomerang && (
+              <span className="badge badge-boomerang flex items-center gap-1">
+                <RotateCcw className="w-3 h-3" /> Boomerang Recall
+              </span>
+            )}
+            {card.poolSource === 'focus' && (
+              <span className="badge badge-subtle text-[11px]">70% Focus</span>
+            )}
+            {card.poolSource === 'review' && (
+              <span className="badge badge-subtle text-[11px]">30% Review</span>
+            )}
+            {card.poolSource === 'straggler' && (
+              <span className="badge badge-warning text-[11px]">Straggler Recall</span>
+            )}
+            {card.poolSource === 'chunk_warmup' && (
+              <span className="badge badge-accent text-[11px] flex items-center gap-1">
+                <Layers className="w-3 h-3" /> Chunk Warmup
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {checkReport && !checkReport.isComplete && (
+              <span className="badge badge-warning text-[11px] font-bold">
+                {checkReport.chunkSnapsCompleted < checkReport.chunkSnapsTotal
+                  ? `Warmup ${checkReport.chunkSnapsCompleted + 1}/${checkReport.chunkSnapsTotal}`
+                  : `Check ${Math.min(
+                      checkReport.targetVerbSnaps,
+                      checkReport.completedVerbSnaps + 1
+                    )}/${checkReport.targetVerbSnaps} · Pass ${Math.min(
+                      checkReport.requiredPasses,
+                      checkReport.previousPasses + 1
+                    )}/${checkReport.requiredPasses}`}
+              </span>
+            )}
+            {isSessionRunning ? (
+              <button
+                onClick={onPause}
+                className="btn btn-subtle text-xs py-1 px-2.5 flex items-center gap-1 text-danger"
+                title="Pause drill"
+              >
+                <Square className="w-3 h-3 fill-current" /> Pause
+              </button>
+            ) : (
+              <button
+                onClick={onStart}
+                className="btn btn-primary text-xs py-1 px-2.5 flex items-center gap-1"
+              >
+                <Play className="w-3 h-3 fill-current" /> Resume
+              </button>
+            )}
+          </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          {checkReport && !checkReport.isComplete && (
-            <span className="badge badge-warning text-[11px] font-bold">
-              {checkReport.chunkSnapsCompleted < checkReport.chunkSnapsTotal
-                ? `Warmup ${checkReport.chunkSnapsCompleted + 1}/${checkReport.chunkSnapsTotal}`
-                : `Check ${Math.min(
-                    checkReport.targetVerbSnaps,
-                    checkReport.completedVerbSnaps + 1
-                  )}/${checkReport.targetVerbSnaps} · Pass ${Math.min(
-                    checkReport.requiredPasses,
-                    checkReport.previousPasses + 1
-                  )}/${checkReport.requiredPasses}`}
-            </span>
-          )}
-          {isSessionRunning ? (
-            <button
-              onClick={onPause}
-              className="btn btn-subtle text-xs py-1 px-2.5 flex items-center gap-1 text-danger"
-              title="Pause drill"
-            >
-              <Square className="w-3 h-3 fill-current" /> Pause
-            </button>
-          ) : (
-            <button
-              onClick={onStart}
-              className="btn btn-primary text-xs py-1 px-2.5 flex items-center gap-1"
-            >
-              <Play className="w-3 h-3 fill-current" /> Resume
-            </button>
-          )}
+        {/* One-line active drill rule explanation so the learner always knows what to do */}
+        <div className="text-[11px] text-muted flex items-center justify-between flex-wrap gap-1">
+          <span>
+            <strong>Mode:</strong> {cadenceInfo.rule} · <strong>Polarity:</strong> {polarityInfo.rule}
+          </span>
         </div>
       </div>
 
@@ -238,6 +388,22 @@ export const DrillStage: React.FC<DrillStageProps> = ({
           </>
         ) : (
           <>
+            {/* 2-Beat Ping-Pong Step Indicator (Beat 1 vs Beat 2) */}
+            {polarityMode === 'ping_pong' && (
+              <div className="mb-2 flex-center">
+                {card.isPingPongSecondBeat ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-danger/15 text-danger border border-danger/40">
+                    <Flame className="w-3.5 h-3.5 fill-current" />
+                    Beat 2 of 2 — Flip to Negative (−)
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-success/15 text-success border border-success/40">
+                    Beat 1 of 2 — Affirmative (+)
+                  </span>
+                )}
+              </div>
+            )}
+
             {/* Translation Hint */}
             <div className="text-sm font-medium text-muted tracking-wide uppercase mb-1">
               {card.translation}
@@ -272,6 +438,26 @@ export const DrillStage: React.FC<DrillStageProps> = ({
               </div>
             )}
 
+            {/* Prominent Visual Polarity / Negation Cue Pill */}
+            {centerNegationCue ? (
+              <div className="mt-2 flex-center flex-col gap-0.5">
+                <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-danger/15 border border-danger/40 text-danger text-sm font-extrabold shadow-sm">
+                  {centerNegationCue.badgeText}
+                </span>
+                <span className="text-[11px] font-semibold text-muted">
+                  Pattern: {centerNegationCue.formulaHint}
+                </span>
+              </div>
+            ) : (
+              (polarityMode === 'ping_pong' || polarityMode === 'mixed') && (
+                <div className="mt-2 flex-center">
+                  <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-success/10 border border-success/30 text-success text-xs font-bold">
+                    ✓ AFFIRMATIVE (+) — Say the positive form
+                  </span>
+                </div>
+              )
+            )}
+
             {/* Attached Non-Verb Lexical Chunk Badge (Option C) */}
             {card.lexicalChunk && (
               <div className="mt-2 flex-center">
@@ -303,17 +489,22 @@ export const DrillStage: React.FC<DrillStageProps> = ({
           )}
           {status === 'at_speaking_correction' && (
             <span className="text-danger flex-center gap-1.5 animate-pulse font-bold">
-              <Volume2 className="w-4 h-4" /> Répétez ! Listening for correction...
+              <Volume2 className="w-4 h-4" />{' '}
+              {card.language === 'fr'
+                ? 'Répétez ! Listening for correction...'
+                : '¡Repita! Listening for correction...'}
             </span>
           )}
           {status === 'feedback_success' && (
             <span className="text-success font-bold text-sm">
-              ✓ Parfait !
+              {card.language === 'fr' ? '✓ Parfait !' : '✓ ¡Perfecto!'}
             </span>
           )}
           {status === 'repeat_verified' && (
             <span className="text-success font-bold text-sm">
-              ✓ Corrected! Continuing...
+              {card.language === 'fr'
+                ? '✓ Très bien ! Continuing...'
+                : '✓ ¡Muy bien! Continuing...'}
             </span>
           )}
         </div>

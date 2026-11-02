@@ -88,7 +88,7 @@ function getDefaultSettings(): AppSettings {
     chunkDrillMode: 'two_part',
     cadence: 'substitution',
     polarityMode: 'affirmative',
-    enableNegativeAdverbs: true,
+    enableNegativeAdverbs: false,
     handsFreeMode: true,
     quietVisualOnlyMode: false,
     useNaturalTriggers: true,
@@ -359,7 +359,22 @@ export function useAppSettings() {
   }, []);
 
   const setLanguage = useCallback((language: LanguageCode) => {
-    setSettings((prev) => ({ ...prev, language }));
+    setSettings((prev) => {
+      if (!prev.courseModeEnabled) {
+        return { ...prev, language };
+      }
+      const subId = prev.activeSubModuleIdByLang[language];
+      const pool = resolveSubModulePool(language, subId);
+      return {
+        ...prev,
+        language,
+        cadence: pool.subModule.recommendedCadence,
+        polarityMode: pool.subModule.recommendedPolarity,
+        enableNegativeAdverbs:
+          pool.subModule.enableNegativeAdverbs ?? pool.subModule.phase >= 2,
+        beatTimerSeconds: pool.subModule.recommendedTimerSeconds,
+      };
+    });
   }, []);
 
   /**
@@ -388,6 +403,8 @@ export function useAppSettings() {
           },
           cadence: pool.subModule.recommendedCadence,
           polarityMode: pool.subModule.recommendedPolarity,
+          enableNegativeAdverbs:
+            pool.subModule.enableNegativeAdverbs ?? pool.subModule.phase >= 2,
           beatTimerSeconds: pool.subModule.recommendedTimerSeconds,
         };
       });

@@ -157,6 +157,8 @@ export interface SubModuleConfig {
   recommendedCadence: SubModuleCadencePreset;
   /** Recommended polarity mode */
   recommendedPolarity: PolarityMode;
+  /** Whether negative adverbs (nunca/ya no or jamais/plus) are unlocked in this Sub-Module (defaults to false in Phase 1, true in Phase 2+) */
+  enableNegativeAdverbs?: boolean;
   /** Recommended reflex beat timer in seconds */
   recommendedTimerSeconds: number;
   /** Graded passes required at >= 80% before graduating (defaults to 2) */

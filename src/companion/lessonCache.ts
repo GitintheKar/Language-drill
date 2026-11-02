@@ -1,7 +1,7 @@
 import { LanguageCode } from '../languages/types';
 import { CompanionLesson, CompanionLessonVariant } from './lessonTypes';
 
-const LESSON_CACHE_STORAGE_KEY = 'rassias_companion_lesson_cache_v1';
+const LESSON_CACHE_STORAGE_KEY = 'rassias_companion_lesson_cache_v2';
 const MAX_CACHED_LESSONS = 40;
 
 export function buildLessonCacheKey(params: {

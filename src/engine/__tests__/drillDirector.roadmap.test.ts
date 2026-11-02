@@ -251,4 +251,52 @@ describe('Build Module 2 — Atomic Mastery, Option C Chunks, 70/30 Weighting & 
     expect(hitRes.evaluation.isCorrect).toBe(true);
     expect(director.getStragglerQueue().length).toBe(0);
   });
+
+  it('curriculum-gates negative adverbs (nunca / ya no) so Phase 1 only uses basic "no" even in ping_pong or negative mode', () => {
+    const phase1Director = new RassiasDrillDirector({
+      language: 'es',
+      activeVerbIds: ['ser', 'estar', 'tener'],
+      activeTenseIds: ['presente'],
+      activeSubModuleId: 'es-1.1',
+      cadence: 'substitution',
+      polarityMode: 'ping_pong',
+      enableNegativeAdverbs: true, // Even if true in settings, Phase 1 gates to basic 'no' ('pas')
+      includeVosotros: false,
+      useNaturalTriggers: true,
+    });
+
+    for (let i = 0; i < 12; i++) {
+      const beat1 = phase1Director.nextPrompt();
+      expect(beat1.negation).toBe('none');
+      phase1Director.submitResponse(beat1.target.verbForm);
+
+      const beat2 = phase1Director.nextPrompt();
+      expect(beat2.isPingPongSecondBeat).toBe(true);
+      expect(beat2.negation).toBe('pas'); // Always basic 'no', never 'jamais' (nunca) or 'plus' (ya no)
+      phase1Director.submitResponse(beat2.target.verbForm);
+    }
+
+    // In Phase 2 (es-2.1), negative adverbs ARE unlocked when enableNegativeAdverbs is true
+    const phase2Director = new RassiasDrillDirector({
+      language: 'es',
+      activeVerbIds: ['ser', 'estar', 'tener'],
+      activeTenseIds: ['presente', 'futuro_proximo'],
+      activeSubModuleId: 'es-2.1',
+      cadence: 'substitution',
+      polarityMode: 'negative',
+      enableNegativeAdverbs: true,
+      includeVosotros: false,
+      useNaturalTriggers: true,
+    });
+
+    const seenNegations = new Set<string>();
+    for (let i = 0; i < 6; i++) {
+      const card = phase2Director.nextPrompt();
+      seenNegations.add(card.negation);
+      phase2Director.submitResponse(card.target.verbForm);
+    }
+    expect(seenNegations.has('pas')).toBe(true);
+    expect(seenNegations.has('jamais')).toBe(true);
+    expect(seenNegations.has('plus')).toBe(true);
+  });
 });

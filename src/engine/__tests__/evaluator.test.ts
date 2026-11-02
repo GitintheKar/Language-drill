@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { evaluateSpokenConjugation } from '../evaluator';
+import { evaluateSpokenConjugation, evaluateSpokenChunk } from '../evaluator';
 import { conjugateFrench } from '../../languages/fr/conjugator';
 import { conjugateSpanish } from '../../languages/es/conjugator';
 
@@ -196,5 +196,67 @@ describe('Phase 2 & 3.5 — Spanish Pro-Drop, Negation & Stress Evaluation Engin
     expect(evaluateSpokenConjugation('tuviera', subjImp).isCorrect).toBe(true);
     expect(evaluateSpokenConjugation('tuviese', subjImp).isCorrect).toBe(true);
     expect(evaluateSpokenConjugation('yo tuviera', subjImp).isCorrect).toBe(true);
+  });
+
+  it('handles Spanish ASR boundary fusions like "este México" for "es de México" and phonetic homophones', () => {
+    const elEs = conjugateSpanish('ser', 'presente', 2);
+    const deMexicoChunk = {
+      id: 'es-de-mexico',
+      target: 'de México',
+      english: 'from Mexico',
+    };
+
+    // 1. Two-part mode where tail is optional or included ("este México" -> "es de México")
+    expect(
+      evaluateSpokenConjugation('este México', elEs, {
+        expectedTailChunk: deMexicoChunk,
+        requireTailInResponse: false,
+      }).isCorrect
+    ).toBe(true);
+
+    // 2. Full-sentence mode where tail is required ("este México" / "él este México")
+    expect(
+      evaluateSpokenConjugation('este México', elEs, {
+        expectedTailChunk: deMexicoChunk,
+        requireTailInResponse: true,
+      }).isCorrect
+    ).toBe(true);
+    expect(
+      evaluateSpokenConjugation('él este mexico', elEs, {
+        expectedTailChunk: deMexicoChunk,
+        requireTailInResponse: true,
+      }).isCorrect
+    ).toBe(true);
+
+    // 3. Step 2 chunk evaluation when user repeats the whole phrase ("es de México" heard as "este México")
+    expect(evaluateSpokenChunk('este México', deMexicoChunk, 'es').isCorrect).toBe(true);
+    expect(evaluateSpokenChunk('de Méjico', deMexicoChunk, 'es').isCorrect).toBe(true);
+
+    // 4. Spanish phonetic equivalences (betacismo b/v, seseo c/s/z, yeísmo ll/y)
+    const yoVoy = conjugateSpanish('ir', 'presente', 0);
+    expect(evaluateSpokenConjugation('boy', yoVoy).isCorrect).toBe(true);
+
+    const elHace = conjugateSpanish('hacer', 'presente', 2);
+    expect(evaluateSpokenConjugation('ase', elHace).isCorrect).toBe(true);
+
+    // 5. Gender/plural adjective inflections and natural intensifiers on tail chunks
+    const yoEstoy = conjugateSpanish('estar', 'presente', 0);
+    const cansadoChunk = {
+      id: 'es-cansado',
+      target: 'cansado',
+      english: 'tired',
+    };
+    expect(
+      evaluateSpokenConjugation('estoy cansada', yoEstoy, {
+        expectedTailChunk: cansadoChunk,
+        requireTailInResponse: true,
+      }).isCorrect
+    ).toBe(true);
+    expect(
+      evaluateSpokenConjugation('estoy muy cansada', yoEstoy, {
+        expectedTailChunk: cansadoChunk,
+        requireTailInResponse: true,
+      }).isCorrect
+    ).toBe(true);
   });
 });

@@ -89,6 +89,7 @@ export function useRassiasDrillSession(
 
   const sessionActiveRef = useRef(false);
   const cycleTokenRef = useRef(0);
+  const repeatSilenceRetriesRef = useRef(0);
   const beatTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoAdvanceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -228,6 +229,7 @@ export function useRassiasDrillSession(
     async (card: DrillPromptCard, token: number) => {
       if (!sessionActiveRef.current || cycleTokenRef.current !== token) return;
 
+      repeatSilenceRetriesRef.current = 0;
       clearTimers();
       speechManager.stopActiveListening();
       setStageStatus('at_speaking_correction');
@@ -248,8 +250,8 @@ export function useRassiasDrillSession(
       setStageStatus('listening_repeat');
 
       if (settings.handsFreeMode) {
-        // Acoustic settling buffer (380ms) so laptop speakers and finger-snap audio decay before mic opens
-        await new Promise((r) => setTimeout(r, 380));
+        // Acoustic settling buffer (400ms) so laptop speakers and finger-snap audio decay before mic opens
+        await new Promise((r) => setTimeout(r, 400));
         if (!sessionActiveRef.current || cycleTokenRef.current !== token) return;
 
         // Automatically listen for the student to repeat the correct form back
@@ -260,7 +262,7 @@ export function useRassiasDrillSession(
             target: card.target,
             engine: settings.speechEngine,
             byokConfig: settings.byokConfig,
-            maxDurationMs: 4500,
+            maxDurationMs: 5500,
             onAudioLevel: setAudioLevel,
             onInterimTranscript: setInterimTranscript,
             onSpeechStarted: clearTimers,
@@ -276,6 +278,12 @@ export function useRassiasDrillSession(
         } catch (err) {
           if (!sessionActiveRef.current || cycleTokenRef.current !== token) return;
           setSpeechError(err instanceof Error ? err.message : 'Microphone error');
+          // Recover automatically in hands-free mode so a transient mic glitch never freezes the session
+          autoAdvanceTimeoutRef.current = setTimeout(() => {
+            if (sessionActiveRef.current && cycleTokenRef.current === token) {
+              advanceToNextCard();
+            }
+          }, 1800);
         }
       }
     },
@@ -314,6 +322,30 @@ export function useRassiasDrillSession(
 
       const wasAlreadyInRepeatLoop = director.isInRepeatLoop();
 
+      // If we were ALREADY in the repeat loop and the mic returned empty silence:
+      // Automatically re-open the mic once so the session never freezes on a dead mic!
+      if (wasAlreadyInRepeatLoop && !transcript.trim()) {
+        if (
+          settings.handsFreeMode &&
+          sessionActiveRef.current &&
+          repeatSilenceRetriesRef.current < 1
+        ) {
+          repeatSilenceRetriesRef.current += 1;
+          setStageStatus('listening_repeat');
+          void triggerManualMicListen();
+          return;
+        }
+        // After retrying once, advance cleanly (the card is already queued in Boomerang for 3 prompts later)
+        if (settings.handsFreeMode && sessionActiveRef.current) {
+          autoAdvanceTimeoutRef.current = setTimeout(() => {
+            if (sessionActiveRef.current && cycleTokenRef.current === token) {
+              advanceToNextCard();
+            }
+          }, 900);
+        }
+        return;
+      }
+
       const outcome = director.submitResponse(transcript, {
         spanishPronounMode: settings.spanishPronounMode,
         aiPronunciationNote,
@@ -351,28 +383,21 @@ export function useRassiasDrillSession(
             if (sessionActiveRef.current && cycleTokenRef.current === token) {
               advanceToNextCard();
             }
-          }, 1450);
+          }, 1350);
         }
         return;
       }
 
-      // If we were ALREADY in the repeat loop and the user missed again:
+      // If we were ALREADY in the repeat loop and the user spoke a non-empty miss again:
       // Never bark "Repita!" a second time! The card is already in the Boomerang Queue for 3 prompts later.
       if (wasAlreadyInRepeatLoop) {
-        if (!transcript.trim()) {
-          // The mic heard silence or an empty audio glitch during repeat.
-          // DO NOT advance automatically! Keep the card on listening_repeat so the user gets to repeat.
-          setStageStatus('listening_repeat');
-          return;
-        }
-
         setStageStatus('evaluating');
         if (settings.handsFreeMode && sessionActiveRef.current) {
           autoAdvanceTimeoutRef.current = setTimeout(() => {
             if (sessionActiveRef.current && cycleTokenRef.current === token) {
               advanceToNextCard();
             }
-          }, 1600);
+          }, 1500);
         }
         return;
       }
@@ -397,12 +422,12 @@ export function useRassiasDrillSession(
             if (sessionActiveRef.current && cycleTokenRef.current === token) {
               advanceToNextCard();
             }
-          }, 1450);
+          }, 1350);
         }
         return;
       }
 
-      // First-try mistake or repeat mistake -> Reset streak and trigger "Répétez !" loop
+      // First-try mistake -> Reset streak and trigger "Répétez !" loop
       if (outcome.queuedBoomerang) {
         setScoreboard((prev) => ({
           ...prev,
@@ -443,6 +468,12 @@ export function useRassiasDrillSession(
     if (!isRepeat && settings.beatTimerSeconds > 0) {
       startBeatCountdown(settings.beatTimerSeconds, () => {
         if (cycleTokenRef.current !== token) return;
+        // Increment cycleTokenRef BEFORE stopping active listening so the aborted listenOnce
+        // callback sees a stale token and does not collide with runRepeatCorrectionFlow!
+        const timeoutToken = cycleTokenRef.current + 1;
+        cycleTokenRef.current = timeoutToken;
+        speechManager.stopActiveListening();
+
         director.triggerBeatTimeout();
         setCheckReport(director.getSubModuleCheckReport());
         setLastEvaluation({
@@ -457,15 +488,15 @@ export function useRassiasDrillSession(
               : `¡Tiempo! ¡Repita!: « ${card.target.fullForm} ! »`,
           shouldTriggerRepeat: true,
         });
-        runRepeatCorrectionFlow(card, token);
+        runRepeatCorrectionFlow(card, timeoutToken);
       });
     }
 
     try {
       const maxDurationMs =
         !isRepeat && settings.beatTimerSeconds > 0
-          ? Math.max(2500, settings.beatTimerSeconds * 1000 + 800)
-          : 4800;
+          ? Math.max(3200, settings.beatTimerSeconds * 1000 + 1000)
+          : 5500;
 
       const result = await speechManager.listenOnce({
         language: card.language,
@@ -491,6 +522,13 @@ export function useRassiasDrillSession(
       clearTimers();
       setAudioLevel(0);
       setSpeechError(err instanceof Error ? err.message : 'Microphone recognition failed');
+      if (settings.handsFreeMode && sessionActiveRef.current) {
+        autoAdvanceTimeoutRef.current = setTimeout(() => {
+          if (sessionActiveRef.current && cycleTokenRef.current === token) {
+            advanceToNextCard();
+          }
+        }, 1800);
+      }
     }
   }, [
     clearTimers,
@@ -498,6 +536,7 @@ export function useRassiasDrillSession(
     runRepeatCorrectionFlow,
     settings.beatTimerSeconds,
     settings.byokConfig,
+    settings.handsFreeMode,
     settings.locales,
     settings.speechEngine,
     startBeatCountdown,
@@ -516,6 +555,7 @@ export function useRassiasDrillSession(
 
     const token = cycleTokenRef.current + 1;
     cycleTokenRef.current = token;
+    repeatSilenceRetriesRef.current = 0;
 
     const card = director.nextPrompt();
     setCurrentCard(card);
@@ -542,8 +582,8 @@ export function useRassiasDrillSession(
     triggerVisualAndAudioSnap(false);
 
     if (settings.handsFreeMode && sessionActiveRef.current) {
-      // Short 120ms acoustic settling delay so desktop/laptop speakers don't echo the snap/TTS into the mic
-      await new Promise((r) => setTimeout(r, 120));
+      // Short 180ms acoustic settling delay so desktop/laptop speakers don't echo the snap/TTS into the mic
+      await new Promise((r) => setTimeout(r, 180));
       if (cycleTokenRef.current !== token || !sessionActiveRef.current) return;
       await triggerManualMicListen();
     } else {
@@ -551,6 +591,9 @@ export function useRassiasDrillSession(
       if (settings.beatTimerSeconds > 0) {
         startBeatCountdown(settings.beatTimerSeconds, () => {
           if (cycleTokenRef.current !== token) return;
+          const timeoutToken = cycleTokenRef.current + 1;
+          cycleTokenRef.current = timeoutToken;
+          speechManager.stopActiveListening();
           director.triggerBeatTimeout();
           setCheckReport(director.getSubModuleCheckReport());
           setLastEvaluation({
@@ -565,7 +608,7 @@ export function useRassiasDrillSession(
                 : `¡Tiempo! ¡Repita!: « ${card.target.fullForm} ! »`,
             shouldTriggerRepeat: true,
           });
-          runRepeatCorrectionFlow(card, token);
+          runRepeatCorrectionFlow(card, timeoutToken);
         });
       }
     }

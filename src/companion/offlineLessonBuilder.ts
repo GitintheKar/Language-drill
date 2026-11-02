@@ -1103,6 +1103,17 @@ export function buildOfflineCompanionLesson(options: {
       ? buildDiagnosticNotes(pool, missedForms, missedChunks)
       : [];
 
+  const adverbsUnlocked =
+    pool.subModule.enableNegativeAdverbs ?? pool.subModule.phase >= 2;
+  const negationEarNote =
+    pool.language === 'es'
+      ? adverbsUnlocked
+        ? 'Negation & Adverbs (Phase 2+): Basic negation places « no » directly before the verb (no hablo). When cued with « ¡Nunca! » ("never"), say « nunca » + verb (nunca hablo / no hablo nunca). When cued with « ¡Ya no! » ("no longer"), say « ya no » + verb (ya no hablo).'
+        : 'Negation Pattern (Phase 1 — Basic « no » only): Place « no » directly before the conjugated verb (e.g., soy → no soy, estás → no estás, tengo → no tengo). In 2-Beat Ping-Pong mode, Beat 1 is Affirmative (+) and Beat 2 immediately flips the exact same form to Negative (−).'
+      : adverbsUnlocked
+      ? 'Negation & Adverbs (Phase 2+): Wrap the conjugated verb or auxiliary in « ne … pas » (not), « ne … jamais » (never), or « ne … plus » (no longer).'
+      : 'Negation Pattern (Phase 1 — Basic « ne … pas » only): Wrap the conjugated verb in « ne … pas » (or « n’… pas » before a vowel, e.g., je suis → je ne suis pas, j’ai → je n’ai pas).';
+
   return {
     id: `${pool.subModule.id}-${variant}-${encoreIndex}-${pool.recipeHash}`,
     language: pool.language,
@@ -1119,7 +1130,7 @@ export function buildOfflineCompanionLesson(options: {
     createdAt: Date.now(),
     sceneSetting: scenes[sceneIdx],
     dialogue,
-    earNotes: [pool.subModule.earRule],
+    earNotes: [pool.subModule.earRule, negationEarNote],
     conjugationParadigms: buildConjugationParadigms(pool, includeVosotros),
     diagnosticNotes,
     chunkCards: buildChunkCards(pool, includeVosotros),

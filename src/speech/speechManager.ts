@@ -208,12 +208,15 @@ class SpeechManager {
       recognition.lang = options.locale;
       recognition.continuous = false; // Essential for Android Chrome on Pixel 10
       recognition.interimResults = true;
-      recognition.maxAlternatives = 3;
+      recognition.maxAlternatives = 5;
 
+      const maxDuration = options.maxDurationMs ?? 5000;
+      const startedAt = Date.now();
       let finalTranscript = '';
       let latestInterim = '';
       let collectedAlternatives: string[] = [];
       let settled = false;
+      let manuallyAborted = false;
 
       const finish = (text: string, alts?: string[]) => {
         if (settled) return;
@@ -246,11 +249,22 @@ class SpeechManager {
       };
 
       const timeoutId = setTimeout(() => {
+        manuallyAborted = true;
         finish(finalTranscript || latestInterim, collectedAlternatives);
-      }, options.maxDurationMs ?? 4500);
+      }, maxDuration);
 
       this.activeAbortController = () => {
+        manuallyAborted = true;
         finish(finalTranscript || latestInterim, collectedAlternatives);
+      };
+
+      // Immediately pause the beat countdown as soon as voice/sound is detected
+      recognition.onspeechstart = () => {
+        options.onSpeechStarted?.();
+        options.onAudioLevel?.(0.5);
+      };
+      recognition.onsoundstart = () => {
+        options.onSpeechStarted?.();
       };
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -269,10 +283,17 @@ class SpeechManager {
             }
           } else {
             interim += res[0].transcript;
+            for (let a = 0; a < res.length; a++) {
+              if (res[a]?.transcript?.trim()) {
+                currentAlts.push(res[a].transcript.trim());
+              }
+            }
           }
         }
         if (currentAlts.length > 0) {
-          collectedAlternatives = Array.from(new Set([...collectedAlternatives, ...currentAlts]));
+          collectedAlternatives = Array.from(
+            new Set([...collectedAlternatives, ...currentAlts])
+          );
         }
         latestInterim = interim;
         options.onInterimTranscript?.((finalTranscript + interim).trim());
@@ -285,7 +306,11 @@ class SpeechManager {
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       recognition.onerror = (event: any) => {
-        if (event.error === 'no-speech' || event.error === 'aborted') {
+        if (event.error === 'no-speech') {
+          // Let onend handle restarting if time remains in maxDuration
+          return;
+        }
+        if (event.error === 'aborted') {
           finish(finalTranscript || latestInterim, collectedAlternatives);
         } else {
           fail(new Error(`Speech recognition error: ${event.error}`));
@@ -293,13 +318,33 @@ class SpeechManager {
       };
 
       recognition.onend = () => {
-        finish(finalTranscript || latestInterim, collectedAlternatives);
+        if (settled) return;
+        const heardSoFar = (finalTranscript || latestInterim).trim();
+        const elapsed = Date.now() - startedAt;
+
+        // If Chrome ended early due to initial silence ('no-speech') before the user spoke
+        // and there is still at least 1100ms left in our listening window, seamlessly restart!
+        if (!heardSoFar && !manuallyAborted && elapsed + 1100 < maxDuration) {
+          setTimeout(() => {
+            if (settled || manuallyAborted) return;
+            try {
+              recognition.start();
+            } catch {
+              finish(finalTranscript || latestInterim, collectedAlternatives);
+            }
+          }, 70);
+          return;
+        }
+
+        finish(heardSoFar, collectedAlternatives);
       };
 
       try {
         recognition.start();
       } catch (err) {
-        fail(err instanceof Error ? err : new Error('Failed to start Web Speech API'));
+        fail(
+          err instanceof Error ? err : new Error('Failed to start Web Speech API')
+        );
       }
     });
   }

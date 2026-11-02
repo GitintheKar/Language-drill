@@ -57,26 +57,26 @@ export const SPANISH_ROADMAP: SubModuleConfig[] = [
       {
         speaker: 'A',
         speakerName: 'Mateo',
-        target: '¿Tienes tiempo ahora? Yo tengo mucha hambre.',
+        target: '¿Tienes tiempo ahora? Tengo mucha hambre.',
         english: 'Do you have time now? I am very hungry.',
         audioTip: 'Tener + hambre literally means "to have hunger".',
       },
       {
         speaker: 'B',
         speakerName: 'Sofía',
-        target: 'No tengo prisa hoy. ¡Nosotros estamos listos!',
+        target: 'No tengo prisa hoy. ¡Estamos listos!',
         english: 'I am not in a hurry today. We are ready!',
       },
       {
         speaker: 'A',
         speakerName: 'Mateo',
-        target: '¿Tu amigo Carlos está aquí también? Él es de México, ¿verdad?',
+        target: '¿Tu amigo Carlos está aquí también? Es de México, ¿verdad?',
         english: 'Is your friend Carlos here too? He is from Mexico, right?',
       },
       {
         speaker: 'B',
         speakerName: 'Sofía',
-        target: 'Sí, él es de México, pero hoy no está en casa.',
+        target: 'Sí, es de México, pero hoy no está en casa.',
         english: 'Yes, he is from Mexico, but today he is not at home.',
       },
     ],
@@ -91,7 +91,7 @@ export const SPANISH_ROADMAP: SubModuleConfig[] = [
       {
         speaker: 'B',
         speakerName: 'Sofía',
-        target: '¡Ya estoy lista! Pero tú no tienes tus llaves, ¿estás loco hoy?',
+        target: '¡Ya estoy lista! Pero no tienes tus llaves, ¿estás loco hoy?',
         english: 'I am ready already! But you do not have your keys—are you acting crazy today?',
       },
       {
@@ -103,19 +103,19 @@ export const SPANISH_ROADMAP: SubModuleConfig[] = [
       {
         speaker: 'B',
         speakerName: 'Sofía',
-        target: 'Tranquilo, tú eres muy listo y nuestras llaves están aquí en la mesa.',
+        target: 'Tranquilo, eres muy listo y nuestras llaves están aquí en la mesa.',
         english: 'Relax, you are very smart and our keys are right here on the table.',
       },
       {
         speaker: 'A',
         speakerName: 'Mateo',
-        target: '¿Y dónde están Ana y Luis? ¿Ustedes tienen hambre también?',
+        target: '¿Y dónde están Ana y Luis? ¿Tienen hambre también?',
         english: 'And where are Ana and Luis? Are you all hungry too?',
       },
       {
         speaker: 'B',
         speakerName: 'Sofía',
-        target: 'Ellos ya están abajo y todos tenemos mucha hambre.',
+        target: 'Ya están abajo y todos tenemos mucha hambre.',
         english: 'They are already downstairs and we are all very hungry.',
       },
     ],
@@ -170,13 +170,13 @@ export const SPANISH_ROADMAP: SubModuleConfig[] = [
       {
         speaker: 'A',
         speakerName: 'Mateo',
-        target: '¡Qué bien! Yo hablo un poco, pero tú hablas mucho.',
-        english: 'How great! I speak a little, but you speak a lot.',
+        target: '¡Qué bien! Hablo un poco, pero hablas muy bien.',
+        english: 'How great! I speak a little, but you speak very well.',
       },
       {
         speaker: 'B',
         speakerName: 'Sofía',
-        target: '¡Vamos juntos! Nosotros no tenemos prisa.',
+        target: '¡Vamos juntos! No tenemos prisa.',
         english: "Let's go together! We are not in a hurry.",
       },
     ],
@@ -202,7 +202,7 @@ export const SPANISH_ROADMAP: SubModuleConfig[] = [
       {
         speaker: 'B',
         speakerName: 'Sofía',
-        target: 'No, él no va al café; él hace su tarea en casa.',
+        target: 'No, no va al café; hace su tarea en casa.',
         english: 'No, he does not go to the café; he does his work at home.',
       },
     ],
@@ -264,7 +264,7 @@ export const SPANISH_ROADMAP: SubModuleConfig[] = [
       {
         speaker: 'B',
         speakerName: 'Sofía',
-        target: 'Nosotros nunca llegamos tarde; siempre llegamos temprano.',
+        target: 'Nunca llegamos tarde; siempre llegamos temprano.',
         english: 'We never arrive late; we always arrive early.',
       },
       {
@@ -318,8 +318,8 @@ export const SPANISH_ROADMAP: SubModuleConfig[] = [
       {
         speaker: 'A',
         speakerName: 'Mateo',
-        target: '¡Claro! Yo bebo un café y tú bebes agua fría.',
-        english: 'Of course! I drink a coffee and you drink cold water.',
+        target: '¡Claro! Bebo un café caliente y después bebemos agua fría.',
+        english: 'Of course! I drink a hot coffee and afterwards we drink cold water.',
       },
       {
         speaker: 'B',
@@ -338,7 +338,7 @@ export const SPANISH_ROADMAP: SubModuleConfig[] = [
       {
         speaker: 'B',
         speakerName: 'Sofía',
-        target: 'Sí, ellos viven allá y aprenden inglés muy rápido.',
+        target: 'Sí, viven allá y aprenden inglés muy rápido.',
         english: 'Yes, they live over there and they are learning English very fast.',
       },
       {
