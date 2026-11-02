@@ -643,10 +643,10 @@ export const SPANISH_LANGUAGE_PACK: LanguagePack = {
   code: 'es',
   name: 'Spanish',
   nativeName: 'Español',
-  defaultLocale: 'es-ES',
+  defaultLocale: 'es-MX',
   availableLocales: [
-    { code: 'es-ES', label: 'Español (España)' },
     { code: 'es-MX', label: 'Español (Latinoamérica)' },
+    { code: 'es-ES', label: 'Español (España)' },
   ],
   pronouns: SPANISH_PRONOUNS,
   tenses: SPANISH_TENSES,

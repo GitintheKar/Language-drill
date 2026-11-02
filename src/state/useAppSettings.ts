@@ -18,6 +18,7 @@ import {
   getRoadmapForLanguage,
   resolveSubModulePool,
 } from '../engine/roadmapResolver';
+import { evictSubModuleFromRollingBuffer } from '../companion/rollingLessonBuffer';
 import { BYOKConfig, SpeechEngineType } from '../speech/types';
 
 export interface SubModuleProgressStats {
@@ -69,7 +70,7 @@ function getDefaultSettings(): AppSettings {
     language: 'fr',
     locales: {
       fr: 'fr-FR',
-      es: 'es-ES',
+      es: 'es-MX',
     },
     activeVerbIdsByLang: {
       fr: frDay1.focusVerbIds,
@@ -177,7 +178,11 @@ export function loadInitialSettings(): AppSettings {
       courseModeEnabled,
       locales: {
         fr: typeof rawLocales.fr === 'string' ? rawLocales.fr : defaults.locales.fr,
-        es: typeof rawLocales.es === 'string' ? rawLocales.es : defaults.locales.es,
+        es:
+          typeof rawLocales.es === 'string' &&
+          !(rawLocales.es === 'es-ES' && !parsed.includeVosotros)
+            ? rawLocales.es
+            : defaults.locales.es,
       },
       activeVerbIdsByLang: {
         fr: sanitizeVerbList('fr', parsed.activeVerbIdsByLang?.fr),
@@ -429,6 +434,10 @@ export function useAppSettings() {
           existing.graduated ||
           report.outcome === 'graduated_clean' ||
           report.outcome === 'graduated_with_stragglers';
+
+        if (graduated) {
+          evictSubModuleFromRollingBuffer(lang, report.subModuleId);
+        }
 
         const nextEntry: SubModuleProgressStats = {
           subModuleId: report.subModuleId,

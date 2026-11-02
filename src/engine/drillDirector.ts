@@ -1406,9 +1406,13 @@ export class RassiasDrillDirector {
     const pronoun = pack.pronouns[person];
     const target = pack.conjugate(verb.id, tense.id, person, negation);
 
-    const lexicalChunk = activePool
-      ? pickChunkForVerb(verb.id, activePool, this.courseWeightingStep)
+    const rawChunk = activePool
+      ? pickChunkForVerb(verb.id, activePool, this.courseWeightingStep, person)
       : undefined;
+    const lexicalChunk =
+      rawChunk && rawChunk.meaningByVerbId?.[verb.id]
+        ? { ...rawChunk, english: rawChunk.meaningByVerbId[verb.id] }
+        : rawChunk;
     const requireTailInResponse = Boolean(
       activePool &&
         lexicalChunk &&

@@ -130,11 +130,38 @@ function pickBestVoice(locale: string, langCode: LanguageCode): SpeechSynthesisV
   const voices = window.speechSynthesis.getVoices();
   if (!voices.length) return null;
 
-  const normalizedLocale = locale.toLowerCase();
-  const exactLocaleVoices = voices.filter((v) => v.lang.toLowerCase().replace('_', '-') === normalizedLocale);
-  const langPrefixVoices = voices.filter((v) => v.lang.toLowerCase().startsWith(langCode));
+  const normalizedLocale = locale.toLowerCase().replace('_', '-');
+  const exactLocaleVoices = voices.filter(
+    (v) => v.lang.toLowerCase().replace('_', '-') === normalizedLocale
+  );
+  const langPrefixVoices = voices.filter((v) =>
+    v.lang.toLowerCase().startsWith(langCode)
+  );
 
-  const pool = exactLocaleVoices.length > 0 ? exactLocaleVoices : langPrefixVoices;
+  // If Latin American Spanish (es-MX / es-US / es-419) is requested and exact match isn't found,
+  // prioritize any Latin American / US Spanish voice over Castilian (es-ES).
+  let pool = exactLocaleVoices;
+  if (pool.length === 0 && langCode === 'es' && normalizedLocale !== 'es-es') {
+    const latAmVoices = langPrefixVoices.filter((v) => {
+      const tag = v.lang.toLowerCase().replace('_', '-');
+      return (
+        tag === 'es-mx' ||
+        tag === 'es-us' ||
+        tag === 'es-419' ||
+        tag === 'es-co' ||
+        tag === 'es-ar' ||
+        tag === 'es-cl' ||
+        /mexic|estados unidos|united states|latinoam|latin america/i.test(v.name)
+      );
+    });
+    if (latAmVoices.length > 0) {
+      pool = latAmVoices;
+    }
+  }
+
+  if (pool.length === 0) {
+    pool = langPrefixVoices;
+  }
   if (pool.length === 0) return null;
 
   // Prefer Google / Neural / Natural voices

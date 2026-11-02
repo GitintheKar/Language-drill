@@ -2,6 +2,7 @@ import { getLanguagePack } from '../languages';
 import {
   LanguageCode,
   LexicalChunk,
+  PersonIndex,
   SubModuleConfig,
 } from '../languages/types';
 
@@ -291,19 +292,24 @@ export function resolveAllSubModulePools(
 export function pickChunkForVerb(
   verbId: string,
   pool: ResolvedSubModulePool,
-  stepIndex = 0
+  stepIndex = 0,
+  person?: PersonIndex
 ): LexicalChunk | undefined {
+  const isSingular =
+    person !== undefined && (person === 0 || person === 1 || person === 2);
+  const fitsNumber = (c: LexicalChunk) => !(isSingular && c.requiresPlural);
+
   // 1. Prefer a focus chunk explicitly tagged for this verbId
-  const matchingFocus = pool.focusChunks.filter((c) =>
-    c.attachToVerbIds?.includes(verbId)
+  const matchingFocus = pool.focusChunks.filter(
+    (c) => c.attachToVerbIds?.includes(verbId) && fitsNumber(c)
   );
   if (matchingFocus.length > 0) {
     return matchingFocus[stepIndex % matchingFocus.length];
   }
 
   // 2. Otherwise check cumulative chunks explicitly tagged for this verbId
-  const matchingCumulative = pool.cumulativeChunks.filter((c) =>
-    c.attachToVerbIds?.includes(verbId)
+  const matchingCumulative = pool.cumulativeChunks.filter(
+    (c) => c.attachToVerbIds?.includes(verbId) && fitsNumber(c)
   );
   if (matchingCumulative.length > 0) {
     return matchingCumulative[stepIndex % matchingCumulative.length];
@@ -311,7 +317,8 @@ export function pickChunkForVerb(
 
   // 3. Fallback to any focus chunk without strict verb restrictions
   const generalFocus = pool.focusChunks.filter(
-    (c) => !c.attachToVerbIds || c.attachToVerbIds.length === 0
+    (c) =>
+      (!c.attachToVerbIds || c.attachToVerbIds.length === 0) && fitsNumber(c)
   );
   if (generalFocus.length > 0) {
     return generalFocus[stepIndex % generalFocus.length];

@@ -15,8 +15,21 @@ export const SPANISH_ROADMAP: SubModuleConfig[] = [
       { id: 'es-en-casa', target: 'en casa', english: 'at home', attachToVerbIds: ['estar'] },
       { id: 'es-aqui', target: 'aquí', english: 'here', attachToVerbIds: ['estar'] },
       { id: 'es-cansado', target: 'cansado', english: 'tired', attachToVerbIds: ['estar'] },
-      { id: 'es-listo', target: 'listo', english: 'ready', attachToVerbIds: ['estar', 'ser'] },
-      { id: 'es-de-madrid', target: 'de Madrid', english: 'from Madrid', attachToVerbIds: ['ser'] },
+      {
+        id: 'es-listo',
+        target: 'listo',
+        english: 'ready (estar) / clever (ser)',
+        attachToVerbIds: ['estar', 'ser'],
+        meaningByVerbId: { estar: 'ready', ser: 'clever' },
+      },
+      {
+        id: 'es-loco',
+        target: 'loco',
+        english: 'acting crazy (estar) / crazy (ser)',
+        attachToVerbIds: ['estar', 'ser'],
+        meaningByVerbId: { estar: 'acting crazy', ser: 'crazy' },
+      },
+      { id: 'es-de-mexico', target: 'de México', english: 'from Mexico', attachToVerbIds: ['ser'] },
       { id: 'es-hambre', target: 'hambre', english: 'hungry (tener hambre)', attachToVerbIds: ['tener'] },
       { id: 'es-prisa', target: 'prisa', english: 'in a hurry (tener prisa)', attachToVerbIds: ['tener'] },
       { id: 'es-tiempo', target: 'tiempo', english: 'time', attachToVerbIds: ['tener'] },
@@ -26,7 +39,7 @@ export const SPANISH_ROADMAP: SubModuleConfig[] = [
     recommendedTimerSeconds: 6,
     requiredPasses: 2,
     earRule:
-      'Listen for the -oy ending in soy and estoy, and the -go in tengo. Contrast stressed e-STÁ (is) with É-sta (this).',
+      'Listen for the -oy ending in soy and estoy, and the -go in tengo. Contrast stressed es-TÁ (is located / feeling) with É-sta (this).',
     starterDialogue: [
       {
         speaker: 'A',
@@ -57,14 +70,53 @@ export const SPANISH_ROADMAP: SubModuleConfig[] = [
       {
         speaker: 'A',
         speakerName: 'Mateo',
-        target: '¿Tu amigo Carlos está aquí también? Él es de Madrid, ¿verdad?',
-        english: 'Is your friend Carlos here too? He is from Madrid, right?',
+        target: '¿Tu amigo Carlos está aquí también? Él es de México, ¿verdad?',
+        english: 'Is your friend Carlos here too? He is from Mexico, right?',
       },
       {
         speaker: 'B',
         speakerName: 'Sofía',
-        target: 'Sí, él es de Madrid, pero hoy no está en casa.',
-        english: 'Yes, he is from Madrid, but today he is not at home.',
+        target: 'Sí, él es de México, pero hoy no está en casa.',
+        english: 'Yes, he is from Mexico, but today he is not at home.',
+      },
+    ],
+    consolidationDialogue: [
+      {
+        speaker: 'A',
+        speakerName: 'Mateo',
+        target: 'Sofía, ¿estás lista para salir o todavía tienes cosas que hacer?',
+        english: 'Sofía, are you ready to leave or do you still have things to do?',
+        audioTip: 'Notice estar + lista means "ready", while ser + lista means "clever/smart".',
+      },
+      {
+        speaker: 'B',
+        speakerName: 'Sofía',
+        target: '¡Ya estoy lista! Pero tú no tienes tus llaves, ¿estás loco hoy?',
+        english: 'I am ready already! But you do not have your keys—are you acting crazy today?',
+      },
+      {
+        speaker: 'A',
+        speakerName: 'Mateo',
+        target: '¡No estoy loco, solo estoy muy cansado y tengo prisa!',
+        english: 'I am not acting crazy, I am just very tired and in a hurry!',
+      },
+      {
+        speaker: 'B',
+        speakerName: 'Sofía',
+        target: 'Tranquilo, tú eres muy listo y nuestras llaves están aquí en la mesa.',
+        english: 'Relax, you are very smart and our keys are right here on the table.',
+      },
+      {
+        speaker: 'A',
+        speakerName: 'Mateo',
+        target: '¿Y dónde están Ana y Luis? ¿Ustedes tienen hambre también?',
+        english: 'And where are Ana and Luis? Are you all hungry too?',
+      },
+      {
+        speaker: 'B',
+        speakerName: 'Sofía',
+        target: 'Ellos ya están abajo y todos tenemos mucha hambre.',
+        english: 'They are already downstairs and we are all very hungry.',
       },
     ],
   },
@@ -128,6 +180,32 @@ export const SPANISH_ROADMAP: SubModuleConfig[] = [
         english: "Let's go together! We are not in a hurry.",
       },
     ],
+    consolidationDialogue: [
+      {
+        speaker: 'A',
+        speakerName: 'Mateo',
+        target: 'Sofía, ¿hablas mucho en español cuando vas al trabajo?',
+        english: 'Sofía, do you speak a lot in Spanish when you go to work?',
+      },
+      {
+        speaker: 'B',
+        speakerName: 'Sofía',
+        target: 'Sí, hablo con mis compañeros todos los días y hacemos muchos proyectos.',
+        english: 'Yes, I speak with my coworkers every day and we do many projects.',
+      },
+      {
+        speaker: 'A',
+        speakerName: 'Mateo',
+        target: '¿Y qué hace tu amigo Carlos por la tarde? ¿Va al café también?',
+        english: 'And what does your friend Carlos do in the afternoon? Does he go to the café too?',
+      },
+      {
+        speaker: 'B',
+        speakerName: 'Sofía',
+        target: 'No, él no va al café; él hace su tarea en casa.',
+        english: 'No, he does not go to the café; he does his work at home.',
+      },
+    ],
   },
   {
     id: 'es-1.3',
@@ -142,7 +220,7 @@ export const SPANISH_ROADMAP: SubModuleConfig[] = [
       { id: 'es-por-la-manana', target: 'por la mañana', english: 'in the morning', attachToVerbIds: ['trabajar', 'estudiar'] },
       { id: 'es-en-la-oficina', target: 'en la oficina', english: 'at the office', attachToVerbIds: ['trabajar', 'comer', 'estar'] },
       { id: 'es-en-el-restaurante', target: 'en el restaurante', english: 'at the restaurant', attachToVerbIds: ['comer', 'trabajar'] },
-      { id: 'es-juntos', target: 'juntos', english: 'together', attachToVerbIds: ['comer', 'estudiar', 'trabajar'] },
+      { id: 'es-juntos', target: 'juntos', english: 'together', attachToVerbIds: ['comer', 'estudiar', 'trabajar'], requiresPlural: true },
     ],
     recommendedCadence: 'qa_flip',
     recommendedPolarity: 'mixed',
@@ -176,6 +254,32 @@ export const SPANISH_ROADMAP: SubModuleConfig[] = [
         english: 'Today we eat together at the restaurant and afterwards we study.',
       },
     ],
+    consolidationDialogue: [
+      {
+        speaker: 'A',
+        speakerName: 'Mateo',
+        target: '¿A qué hora llegan ustedes a la oficina por la mañana?',
+        english: 'What time do you all arrive at the office in the morning?',
+      },
+      {
+        speaker: 'B',
+        speakerName: 'Sofía',
+        target: 'Nosotros nunca llegamos tarde; siempre llegamos temprano.',
+        english: 'We never arrive late; we always arrive early.',
+      },
+      {
+        speaker: 'A',
+        speakerName: 'Mateo',
+        target: '¿Estudian ustedes español después del trabajo?',
+        english: 'Do you all study Spanish after work?',
+      },
+      {
+        speaker: 'B',
+        speakerName: 'Sofía',
+        target: 'Sí, estudiamos juntos una hora y luego comemos en casa.',
+        english: 'Yes, we study together for an hour and then we eat at home.',
+      },
+    ],
   },
   {
     id: 'es-1.4',
@@ -197,7 +301,59 @@ export const SPANISH_ROADMAP: SubModuleConfig[] = [
     recommendedTimerSeconds: 4,
     requiredPasses: 2,
     earRule:
-      '-er (beber) and -ir (vivir) sound 100% identical in the present tense EXCEPT in nosotros (bebemos vs. vivimos) and vosotros (bebéis vs. vivís).',
+      '-er (beber) and -ir (vivir) sound 100% identical in Latin American Spanish EXCEPT in nosotros (bebemos vs. vivimos).',
+    starterDialogue: [
+      {
+        speaker: 'A',
+        speakerName: 'Mateo',
+        target: 'Sofía, ¿vives cerca de aquí o vives lejos?',
+        english: 'Sofía, do you live near here or do you live far away?',
+      },
+      {
+        speaker: 'B',
+        speakerName: 'Sofía',
+        target: 'Vivo muy cerca de aquí. ¿Bebes un café conmigo?',
+        english: 'I live very close to here. Will you drink a coffee with me?',
+      },
+      {
+        speaker: 'A',
+        speakerName: 'Mateo',
+        target: '¡Claro! Yo bebo un café y tú bebes agua fría.',
+        english: 'Of course! I drink a coffee and you drink cold water.',
+      },
+      {
+        speaker: 'B',
+        speakerName: 'Sofía',
+        target: 'Un momento, escribo un mensaje rápido mientras aprendemos estas palabras.',
+        english: 'One moment, I am writing a quick message while we learn these words.',
+      },
+    ],
+    consolidationDialogue: [
+      {
+        speaker: 'A',
+        speakerName: 'Mateo',
+        target: '¿Dónde viven tus hermanos ahora? ¿Viven en México?',
+        english: 'Where do your siblings live now? Do they live in Mexico?',
+      },
+      {
+        speaker: 'B',
+        speakerName: 'Sofía',
+        target: 'Sí, ellos viven allá y aprenden inglés muy rápido.',
+        english: 'Yes, they live over there and they are learning English very fast.',
+      },
+      {
+        speaker: 'A',
+        speakerName: 'Mateo',
+        target: '¿Les escribes mensajes todos los días?',
+        english: 'Do you write them messages every day?',
+      },
+      {
+        speaker: 'B',
+        speakerName: 'Sofía',
+        target: 'Sí, siempre les escribo por la mañana mientras bebo mi café.',
+        english: 'Yes, I always write to them in the morning while I drink my coffee.',
+      },
+    ],
   },
 
   // ============================================================================

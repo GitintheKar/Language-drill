@@ -154,6 +154,32 @@ export const CompanionLessonModal: React.FC<CompanionLessonModalProps> = ({
             <span className="badge badge-subtle text-[11px]">
               Pass {passesCompleted}/{requiredPasses}
             </span>
+            <span
+              className="badge badge-subtle text-[11px] flex items-center gap-1"
+              title={
+                lesson.aiFallbackReason ||
+                `Lesson source: ${lesson.generatedBy}`
+              }
+            >
+              {lesson.generatedBy === 'byok_ai' && (
+                <>
+                  <Sparkles className="w-3 h-3 text-primary" />
+                  Gemini AI Synthesized
+                </>
+              )}
+              {lesson.generatedBy === 'rolling_buffer' && (
+                <>
+                  <Sparkles className="w-3 h-3 text-emerald-500" />
+                  Ready Offline (Buffered AI Pack)
+                </>
+              )}
+              {lesson.generatedBy === 'starter_builtin' && (
+                <>Curated Native Scene</>
+              )}
+              {lesson.generatedBy === 'offline_engine' && (
+                <>Offline Linguistic Engine</>
+              )}
+            </span>
           </div>
 
           <div className="flex items-center gap-2">

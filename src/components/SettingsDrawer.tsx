@@ -165,6 +165,32 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
             {draftSettings.language === 'es' && (
               <div className="space-y-2 pt-2 border-t border-border/40 text-xs">
                 <div className="flex items-center justify-between">
+                  <div>
+                    <span className="block font-semibold">Spanish Dialect &amp; Voice</span>
+                    <span className="text-muted text-[11px]">
+                      {draftSettings.locales.es === 'es-MX'
+                        ? 'Latin America (es-MX / ustedes default)'
+                        : 'Castilian Spain (es-ES)'}
+                    </span>
+                  </div>
+                  <select
+                    className="input-field text-xs py-1 px-2"
+                    value={draftSettings.locales.es}
+                    onChange={(e) => {
+                      const nextLocale = e.target.value;
+                      updateDraft({
+                        locales: {
+                          ...draftSettings.locales,
+                          es: nextLocale,
+                        },
+                      });
+                    }}
+                  >
+                    <option value="es-MX">Latinoamérica (es-MX)</option>
+                    <option value="es-ES">España (es-ES)</option>
+                  </select>
+                </div>
+                <div className="flex items-center justify-between">
                   <span className="text-muted">Include Spain &quot;Vosotros&quot; (You all)</span>
                   <input
                     type="checkbox"

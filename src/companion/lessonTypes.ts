@@ -69,7 +69,9 @@ export interface CompanionLesson {
   variant: CompanionLessonVariant;
   encoreIndex: number;
   recipeHash: string;
-  generatedBy: 'starter_builtin' | 'offline_engine' | 'byok_ai';
+  generatedBy: 'starter_builtin' | 'offline_engine' | 'byok_ai' | 'rolling_buffer';
+  /** Optional diagnostic message if a BYOK API request failed and fell back to local/offline generation */
+  aiFallbackReason?: string;
   createdAt: number;
   /** Setting description for the narrative scene */
   sceneSetting: string;

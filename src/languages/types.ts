@@ -110,6 +110,14 @@ export interface LexicalChunk {
   english: string;
   /** Optional verb IDs this chunk naturally attaches to as a sentence tail */
   attachToVerbIds?: string[];
+  /**
+   * Optional verb-specific English meaning overrides when a chunk changes meaning
+   * depending on the verb (e.g. Spanish "listo": { estar: "ready", ser: "clever" },
+   * "loco": { estar: "acting crazy", ser: "crazy" }).
+   */
+  meaningByVerbId?: Record<string, string>;
+  /** Optional flag indicating this chunk requires a plural subject (e.g. "juntos", "ensemble") */
+  requiresPlural?: boolean;
 }
 
 export interface DialogueLine {
@@ -155,8 +163,10 @@ export interface SubModuleConfig {
   requiredPasses?: number;
   /** "How the Ear Hears It" sound/stress rule */
   earRule: string;
-  /** Optional built-in baseline dialogue for immediate offline use */
+  /** Optional built-in baseline dialogue (Scene A) for immediate offline use */
   starterDialogue?: DialogueLine[];
+  /** Optional built-in Pass 2 consolidation dialogue (Scene B) so offline Scene B is rich and distinct */
+  consolidationDialogue?: DialogueLine[];
 }
 
 export interface LanguagePack {

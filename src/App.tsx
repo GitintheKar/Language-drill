@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   BookOpen,
   Settings as SettingsIcon,
@@ -17,6 +17,7 @@ import {
   CompanionLesson,
   CompanionLessonVariant,
 } from './companion/lessonTypes';
+import { syncRollingLessonBuffer } from './companion/rollingLessonBuffer';
 import { CompanionLessonModal } from './components/CompanionLessonModal';
 import { CourseRoadmapDrawer } from './components/CourseRoadmapDrawer';
 import { DrillStage } from './components/DrillStage';
@@ -130,6 +131,22 @@ export const App: React.FC = () => {
     handleSubModuleCheckComplete
   );
 
+  // Automatically maintain the 3-Sub-Module Rolling Prefetch Buffer (Current + Next 2)
+  // and evict graduated Sub-Modules outside the active window.
+  useEffect(() => {
+    void syncRollingLessonBuffer({
+      language: settings.language,
+      activeSubModuleId: activeSubModulePool.subModule.id,
+      byokConfig: settings.byokConfig,
+      includeVosotros: settings.includeVosotros,
+    });
+  }, [
+    activeSubModulePool.subModule.id,
+    settings.byokConfig,
+    settings.includeVosotros,
+    settings.language,
+  ]);
+
   const openCompanionLessonForSubModule = useCallback(
     async (
       subModuleId: string,
@@ -143,10 +160,12 @@ export const App: React.FC = () => {
       setIsLessonModalOpen(true);
       setIsLessonLoading(true);
 
-      const nextEncoreIdx = options?.freshRemix ? encoreCounter + 1 : encoreCounter;
-      if (options?.freshRemix) {
-        setEncoreCounter(nextEncoreIdx);
-      }
+      const nextEncoreIdx = options?.freshRemix
+        ? encoreCounter + 1
+        : variant === 'encore_remedial'
+        ? Math.max(1, encoreCounter)
+        : 0;
+      setEncoreCounter(nextEncoreIdx);
 
       try {
         const lesson = await generateCompanionLesson({
@@ -158,6 +177,7 @@ export const App: React.FC = () => {
           missedChunks: options?.report?.missedChunks ?? completedCheckReport?.missedChunks ?? [],
           byokConfig: settings.byokConfig,
           bypassCache: Boolean(options?.freshRemix),
+          includeVosotros: settings.includeVosotros,
         });
         setActiveLesson(lesson);
       } finally {
@@ -170,6 +190,7 @@ export const App: React.FC = () => {
       encoreCounter,
       pauseSession,
       settings.byokConfig,
+      settings.includeVosotros,
       settings.language,
     ]
   );
